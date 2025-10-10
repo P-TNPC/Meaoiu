@@ -1,0 +1,24 @@
+{
+	"name": "meaoiu",
+	"version": "0.0.15",
+	"description": "喵喵喵",
+	"license": "MIT",
+	"author": "TNPC",
+	"type": "module",
+	"bin": {
+		"meaoiu": "dist/main.js"
+	},
+	"scripts": {
+		"start": "tsx src/main.ts",
+		"test": "tsx src/test.ts"
+	},
+	"devDependencies": {
+		"@types/node": "^24.7.0",
+		"@types/readline-sync": "^1.4.8",
+		"typescript": "^5.9.3"
+	},
+	"dependencies": {
+		"readline-sync": "^1.4.10",
+		"string-width": "^8.1.0"
+	}
+}
