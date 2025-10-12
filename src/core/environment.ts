@@ -1,6 +1,6 @@
 // src/core/environment.ts
 import * as AST from './ast.js';
-import logger from '../utils/logger.js';
+import logger from '../cli/logger.js';
 
 type VariableValue = any | { isReference: true; scope: Environment; name: string };
 interface Variable {

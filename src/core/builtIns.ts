@@ -14,6 +14,7 @@ export const builtInFunctionNames = [
 	'差不多',
 	'抢大的',
 	'吃剩的',
+	'摸余',
 	'找尾巴',
 	'喵语连珠',
 	'打盹',
@@ -30,7 +31,7 @@ export function isBuiltInFunctionName(name: string): name is (typeof builtInFunc
 export const createBuiltInFunctions = (io: MeaoiuRuntimeIO): BuiltInFunctions => ({
 	// I/O
 	喵: (args: any[]) => io.print(args),
-	祈求: (args: any[]) => {
+	祈求: async (args: any[]) => {
 		return io.prompt(args[0] ?? '> ');
 	},
 
@@ -59,6 +60,7 @@ export const createBuiltInFunctions = (io: MeaoiuRuntimeIO): BuiltInFunctions =>
 	差不多: (args: any[]) => Math.round(args[0]),
 	抢大的: (args: any[]) => Math.max(...args),
 	吃剩的: (args: any[]) => Math.min(...args),
+	摸余: (args: any[]) => args[0] % args[1],
 
 	// String
 	找尾巴: (args: any[]) => String(args[0]).length,

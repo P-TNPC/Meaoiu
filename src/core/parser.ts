@@ -2,7 +2,7 @@
 import type { Token, TokenType } from './tokenizer.js';
 import * as AST from './ast.js';
 
-interface SyntaxError {
+export interface SyntaxError {
 	message: string;
 	line: number;
 	col: number;
@@ -209,7 +209,7 @@ export class Parser {
 			if (currentType === 'BLOCK_END') {
 				if (this.blockDepth > 0) return;
 				this.errors.push({
-					message: `这个 '${this.current().value}' 被孤立了喵`,
+					message: `这个 '${this.current().value}' 被孤立了喵!`,
 					line: this.current().line,
 					col: this.current().col,
 				});
@@ -329,6 +329,8 @@ export class Parser {
 						s = { type: 'ExpressionStatement', expression: expr, line: expr.line, col: expr.col, ...this.endLoc() };
 					}
 					break;
+				case 'BLOCK_END':
+					throw new Error(`[${sT.line}:${sT.col}] 假的语句喵!`);
 				default:
 					// 如果不是任何已知的语句关键字，也尝试将其作为表达式语句解析
 					const expr = this.parseExpression();

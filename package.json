@@ -6,19 +6,25 @@
 	"author": "TNPC",
 	"type": "module",
 	"bin": {
-		"meaoiu": "dist/main.js"
+		"meaoiu": "dist/cli/main.js"
 	},
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
 	"scripts": {
-		"start": "tsx src/main.ts",
-		"test": "tsx src/test.ts"
+		"clean": "rimraf dist",
+		"build": "npm run clean && tsc",
+		"start": "tsx src/cli/main.ts"
 	},
 	"devDependencies": {
-		"@types/node": "^24.7.0",
-		"@types/readline-sync": "^1.4.8",
+		"@types/node": "^24.7.2",
+		"rimraf": "^6.0.1",
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
-		"readline-sync": "^1.4.10",
+		"commander": "^14.0.1",
 		"string-width": "^8.1.0"
 	}
 }

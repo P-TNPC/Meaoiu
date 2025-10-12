@@ -8,7 +8,7 @@ class ReturnValue {
 	constructor(public value: any) {}
 }
 
-export function evaluate(node: AST.AstNode, env: Environment, builtIns: BuiltInFunctions): any {
+export async function evaluate(node: AST.AstNode, env: Environment, builtIns: BuiltInFunctions): Promise<any> {
 	try {
 		switch (node.type) {
 			case 'NumericLiteral':
@@ -21,40 +21,35 @@ export function evaluate(node: AST.AstNode, env: Environment, builtIns: BuiltInF
 				return null;
 			case 'Identifier':
 				return env.lookup((node as AST.Identifier).symbol);
-			case 'Program':
+			case 'Program': {
 				let lastEvaluatedInProgram: any;
 				for (const statement of (node as AST.Program).body) {
-					lastEvaluatedInProgram = evaluate(statement, env, builtIns);
+					lastEvaluatedInProgram = await evaluate(statement, env, builtIns);
 				}
 				return lastEvaluatedInProgram;
+			}
 			case 'BlockStatement': {
 				// 为块创建一个新的、独立的子作用域！
 				const blockEnv = new Environment(env);
-				let lastEvaluatedInBlock: any = null; // 默认为 null (空碗)
+				let lastEvaluated: any = null; // 默认为 null (空碗)
 
 				for (const stmt of (node as AST.BlockStatement).body) {
-					lastEvaluatedInBlock = evaluate(stmt, blockEnv, builtIns);
+					lastEvaluated = await evaluate(stmt, blockEnv, builtIns);
 
-					// 如果块内部有 `叼回来`，立刻中断并返回值
-					if (lastEvaluatedInBlock instanceof ReturnValue) {
-						return lastEvaluatedInBlock.value; // 直接返回解包后的值
-					}
-
-					// Break 信号依然需要向上传递给循环
-					if (lastEvaluatedInBlock === BREAK_SIGNAL) {
-						return BREAK_SIGNAL;
+					if (lastEvaluated instanceof ReturnValue || lastEvaluated === BREAK_SIGNAL) {
+						return lastEvaluated;
 					}
 				}
 
 				// 块的返回值是最后一个语句的返回值（如果它有的话）
-				return env.resolveValue(lastEvaluatedInBlock);
+				return env.resolveValue(lastEvaluated);
 			}
 			case 'SequenceExpression': {
 				const seqExpr = node as AST.SequenceExpression;
-				let accumulator = env.resolveValue(evaluate(seqExpr.sections[0]!, env, builtIns));
+				let accumulator = env.resolveValue(await evaluate(seqExpr.sections[0]!, env, builtIns));
 				for (let i = 0; i < seqExpr.operators.length; i++) {
 					const operator = seqExpr.operators[i]!.value;
-					const rightHandSide = env.resolveValue(evaluate(seqExpr.sections[i + 1]!, env, builtIns));
+					const rightHandSide = env.resolveValue(await evaluate(seqExpr.sections[i + 1]!, env, builtIns));
 					switch (operator) {
 						case '+':
 							accumulator += rightHandSide;
@@ -76,23 +71,13 @@ export function evaluate(node: AST.AstNode, env: Environment, builtIns: BuiltInF
 			}
 			case 'BinaryExpression': {
 				const binExpr = node as AST.BinaryExpression;
-				const left = evaluate(binExpr.left, env, builtIns);
-				const right = evaluate(binExpr.right, env, builtIns);
+				const left = await evaluate(binExpr.left, env, builtIns);
+				const right = await evaluate(binExpr.right, env, builtIns);
 
 				const leftVal = env.resolveValue(left);
 				const rightVal = env.resolveValue(right);
 
 				const op = binExpr.operator;
-
-				if (op === '+') {
-					if (typeof leftVal === 'number' && typeof rightVal === 'number') {
-						return leftVal + rightVal;
-					}
-					if (typeof leftVal === 'string' && typeof rightVal === 'string') {
-						return leftVal + rightVal;
-					}
-					throw new Error(`'+' 操作符不能用于 ${typeof leftVal} 和 ${typeof rightVal} 之间喵!`);
-				}
 
 				if (['-', '*', '/'].includes(op)) {
 					if (typeof leftVal !== 'number' || typeof rightVal !== 'number') {
@@ -100,7 +85,7 @@ export function evaluate(node: AST.AstNode, env: Environment, builtIns: BuiltInF
 					}
 				}
 
-				if (['>', '<', '>=', '<='].includes(op)) {
+				if (['+', '>', '<', '>=', '<='].includes(op)) {
 					if (typeof leftVal !== typeof rightVal) {
 						throw new Error(`'${op}' 操作符不能用于不同类型之间喵!`);
 					}
@@ -109,6 +94,8 @@ export function evaluate(node: AST.AstNode, env: Environment, builtIns: BuiltInF
 					}
 				}
 				switch (op) {
+					case '+':
+						return leftVal + rightVal;
 					case '-':
 						return leftVal - rightVal;
 					case '*':
@@ -130,105 +117,102 @@ export function evaluate(node: AST.AstNode, env: Environment, builtIns: BuiltInF
 			}
 			case 'LogicalExpression': {
 				const logExpr = node as AST.LogicalExpression;
-				const leftVal = env.resolveValue(evaluate(logExpr.left, env, builtIns));
+				const leftVal = env.resolveValue(await evaluate(logExpr.left, env, builtIns));
 				switch (logExpr.operator) {
 					case 'AND':
-						return leftVal && env.resolveValue(evaluate(logExpr.right, env, builtIns));
+						return leftVal && env.resolveValue(await evaluate(logExpr.right, env, builtIns));
 					case 'OR':
-						return leftVal || env.resolveValue(evaluate(logExpr.right, env, builtIns));
+						return leftVal || env.resolveValue(await evaluate(logExpr.right, env, builtIns));
 					case 'NOR':
-						return !(leftVal || env.resolveValue(evaluate(logExpr.right, env, builtIns)));
+						return !(leftVal || env.resolveValue(await evaluate(logExpr.right, env, builtIns)));
 					case 'NAND':
-						return !(leftVal && env.resolveValue(evaluate(logExpr.right, env, builtIns)));
+						return !(leftVal && env.resolveValue(await evaluate(logExpr.right, env, builtIns)));
 				}
 			}
-			case 'VariableDeclaration':
+			case 'VariableDeclaration': {
 				const varDec = node as AST.VariableDeclaration;
-				const value = evaluate(varDec.value, env, builtIns) ?? null;
+				let value = (await evaluate(varDec.value, env, builtIns)) ?? null;
+				if (value instanceof ReturnValue) value = value.value;
 				return env.declare(varDec.identifier.symbol, value, varDec.kind);
+			}
 			case 'AssignmentStatement': {
 				const assignStmt = node as AST.AssignmentStatement;
-				const value = evaluate(assignStmt.value, env, builtIns);
+				let value = await evaluate(assignStmt.value, env, builtIns);
+				if (value instanceof ReturnValue) value = value.value;
 				return env.assign(assignStmt.assignee.symbol, value, assignStmt.kind);
 			}
-			case 'IfStatement':
-				const isTrue = env.resolveValue(evaluate((node as AST.IfStatement).test, env, builtIns));
+			case 'IfStatement': {
+				const isTrue = env.resolveValue(await evaluate((node as AST.IfStatement).test, env, builtIns));
 				if (isTrue) {
-					return evaluate((node as AST.IfStatement).consequent, env, builtIns);
+					return await evaluate((node as AST.IfStatement).consequent, env, builtIns);
 				} else if ((node as AST.IfStatement).alternate) {
-					return evaluate((node as AST.IfStatement).alternate!, env, builtIns);
+					return await evaluate((node as AST.IfStatement).alternate!, env, builtIns);
 				}
 				return null;
-			case 'LoopStatement':
+			}
+			case 'LoopStatement': {
 				while (true) {
-					const result = evaluate((node as AST.LoopStatement).body, env, builtIns);
-					if (result === BREAK_SIGNAL) {
-						break;
-					}
+					const result = await evaluate((node as AST.LoopStatement).body, env, builtIns);
+					if (result === BREAK_SIGNAL) break;
+					if (result instanceof ReturnValue) return result;
 				}
-				return;
+				return null;
+			}
 			case 'BreakStatement':
 				return BREAK_SIGNAL;
-			case 'FunctionDeclaration':
+			case 'FunctionDeclaration': {
 				const funcDec = node as AST.FunctionDeclaration;
 				env.declareFunction(funcDec.name.symbol, funcDec);
 				return;
-			case 'CallExpression':
+			}
+			case 'CallExpression': {
 				const callExpr = node as AST.CallExpression;
 				const funcName = callExpr.callee.symbol;
 
 				if (isBuiltInFunctionName(funcName)) {
-					const args = callExpr.args.map((arg) => evaluate(arg.expression, env, builtIns));
-					const evalArgs = args.map((arg) => env.resolveValue(arg));
-					return builtIns[funcName]?.(evalArgs);
+					const args = await Promise.all(callExpr.args.map(arg => evaluate(arg.expression, env, builtIns)));
+					const evalArgs = args.map(arg => env.resolveValue(arg));
+					return builtIns[funcName](evalArgs);
 				}
 
 				const func = env.lookupFunction(funcName);
-				if (!func) {
-					throw new Error(`计谋? ${funcName}`);
-				}
+				if (!func) throw new Error(`计谋? ${funcName}`);
 
 				const functionEnv = new Environment(env);
-				if (callExpr.args.length !== func.params.length) {
-					throw new Error(`贡品数量?`);
-				}
+				if (callExpr.args.length !== func.params.length) throw new Error(`贡品数量?`);
 
 				for (let i = 0; i < func.params.length; i++) {
 					const paramName = func.params[i]!.symbol;
-					const argument = callExpr.args[i];
+					const argument = callExpr.args[i]!;
 
-					if (argument?.isClone) {
+					if (argument.isClone || argument.expression.type !== 'Identifier') {
 						// 如果是“高仿”
-						const argValue = evaluate(argument.expression, env, builtIns);
+						const argValue = await evaluate(argument.expression, env, builtIns);
 						functionEnv.declare(paramName, argValue, 'Copy');
 					} else {
 						// 默认是引用
-						if (argument?.expression.type !== 'Identifier') {
-							throw new Error("只有变量才能被引用传递喵！字面量（比如数字或字符串）必须用'高仿'。");
-						}
 						const varName = (argument.expression as AST.Identifier).symbol;
 						const sourceScope = env.findVariableScope(varName);
-						if (!sourceScope) {
-							throw new Error(`找不到要引用的变量「${varName}」喵！`);
-						}
+						if (!sourceScope) throw new Error(`找不到要引用的变量「${varName}」喵！`);
 
 						functionEnv.declareReference(paramName, sourceScope, varName);
 					}
 				}
 
-				const result = evaluate(func.body, functionEnv, builtIns);
-				if (result instanceof ReturnValue) {
-					return result.value;
+				const result = await evaluate(func.body, functionEnv, builtIns);
+				if (result instanceof ReturnValue) return result.value;
+				if (result === BREAK_SIGNAL) {
+					console.warn(`警告喵: 在计谋 '${funcName}' 中，说'累了'也要继续玩喵。`);
 				}
 				return null;
+			}
 			case 'ReturnStatement': {
 				const returnStmt = node as AST.ReturnStatement;
-				const value = returnStmt.argument ? evaluate(returnStmt.argument, env, builtIns) : null;
+				const value = returnStmt.argument ? await evaluate(returnStmt.argument, env, builtIns) : null;
 				return new ReturnValue(env.resolveValue(value));
 			}
-			case 'ExpressionStatement': {
-				return evaluate((node as AST.ExpressionStatement).expression, env, builtIns);
-			}
+			case 'ExpressionStatement':
+				return await evaluate((node as AST.ExpressionStatement).expression, env, builtIns);
 		}
 	} catch (err: any) {
 		if (err.message.startsWith('[')) {

@@ -1,5 +1,7 @@
 // src/core/tokenizer.ts
 
+import { preprocess } from './preprocessor.js';
+
 export type TokenType =
 	| 'KEYWORD_USE'
 	| 'KEYWORD_IS'
@@ -34,13 +36,6 @@ export type TokenType =
 	| 'LOGIC_CLOSE_NOR'
 	| 'COMMENT';
 
-export interface Token {
-	type: TokenType;
-	value: string;
-	line: number; // 新增：行号
-	col: number; // 新增：列号
-}
-
 export const KEYWORDS: Record<string, TokenType> = {
 	蹭: 'KEYWORD_USE',
 	就是: 'KEYWORD_IS',
@@ -64,11 +59,23 @@ export const KEYWORDS: Record<string, TokenType> = {
 	有坏: 'LOGIC_CLOSE_NAND',
 } as const;
 
+export interface Token {
+	type: TokenType;
+	value: string;
+	line: number;
+	col: number;
+}
+
 export interface TokenizerOptions {
 	ignoreComments?: boolean;
+	convertFullWidth?: boolean;
 }
 
 export function tokenize(sourceCode: string, options: TokenizerOptions): Token[] {
+	options.convertFullWidth ??= true;
+	if (options?.convertFullWidth) {
+		sourceCode = preprocess(sourceCode);
+	}
 	const tokens: Token[] = [];
 	let line = 1;
 	let col = 1;
@@ -118,7 +125,6 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 
 			if (nestingLevel !== 0) console.error('警告喵: 文件结尾有未闭合的悄悄话！');
 
-			// THE NEW LOGIC: Only push COMMENT token if not ignored
 			if (!options?.ignoreComments) {
 				tokens.push({ type: 'COMMENT', value: commentContent, line: commentStartLine, col: commentStartCol });
 			}
@@ -147,7 +153,6 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 			continue;
 		}
 
-		// Check for keywords and literals that are not identifiers
 		const remainingCode = sourceCode.substring(cursor);
 		let matchedKeyword = '';
 		for (const keyword of sortedKeywords) {

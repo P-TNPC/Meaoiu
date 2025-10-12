@@ -2,7 +2,7 @@ import * as AST from '../core/ast.js';
 import type { builtInFunctionNames } from '../core/builtIns.js';
 import type { MeaoiuType, Scope, SymbolInfo } from './symbolTable.js';
 
-interface SemanticError {
+export interface SemanticError {
 	message: string;
 	line: number;
 	col: number;
@@ -30,11 +30,10 @@ class SymbolAnalyzer {
 				return '空碗';
 			case 'Identifier':
 				return this.lookup(node.symbol)?.type ?? '不懂';
-			case 'CallExpression': {
+			case 'CallExpression':
 				const func = this.lookup(node.callee.symbol);
 				if (func?.kind === 'function') return '不懂';
 				return '不懂';
-			}
 			case 'BinaryExpression':
 				const op = (node as AST.BinaryExpression).operator;
 				if (['>', '<', '>=', '<=', '=='].includes(op)) return '好坏';
@@ -56,7 +55,7 @@ class SymbolAnalyzer {
 			case 'Program':
 			case 'BlockStatement':
 				this.enterScope(); // 进入块时，创建新作用域
-				(node as AST.BlockStatement).body.forEach((n) => this.visit(n));
+				(node as AST.BlockStatement).body.forEach(n => this.visit(n));
 				this.leaveScope(); // 离开块时，返回父作用域
 				break;
 			case 'IfStatement': {
@@ -86,7 +85,7 @@ class SymbolAnalyzer {
 				break;
 			case 'CallExpression': {
 				const n = node as AST.CallExpression;
-				n.args.forEach((arg) => this.visit(arg.expression));
+				n.args.forEach(arg => this.visit(arg.expression));
 				this.visit(n.callee);
 				break;
 			}
@@ -95,7 +94,7 @@ class SymbolAnalyzer {
 				this.visitBinaryExpression(node as AST.BinaryExpression);
 				break;
 			case 'SequenceExpression':
-				(node as AST.SequenceExpression).sections.forEach((s) => this.visit(s));
+				(node as AST.SequenceExpression).sections.forEach(s => this.visit(s));
 				break;
 			case 'Identifier':
 				this.visitIdentifier(node as AST.Identifier);
@@ -119,7 +118,7 @@ class SymbolAnalyzer {
 		this.declare(node.name.symbol, 'function', '计谋', node.name);
 		this.enterScope();
 		// 为所有贡品声明初始类型：'不懂'
-		node.params.forEach((p) => this.declare(p.symbol, 'parameter', '不懂', p));
+		node.params.forEach(p => this.declare(p.symbol, 'parameter', '不懂', p));
 		this.visit(node.body);
 		this.leaveScope();
 	}
@@ -149,26 +148,20 @@ class SymbolAnalyzer {
 		const rightType = this.inferExpressionType(node.right);
 		const op = node.operator;
 
-		if (op === '+') {
-			if (!((leftType === '摸数' && rightType === '摸数') || (leftType === '闲话' && rightType === '闲话'))) {
-				this.errors.push({
-					message: `'+' 操作符不能用于 '${leftType}' 和 '${rightType}' 之间喵!`,
-					line: node.line!,
-					col: node.col!,
-				});
-			}
+		if (['+', '>', '<', '>=', '<='].includes(op)) {
+			if (leftType === rightType && (leftType === '摸数' || leftType === '闲话')) return;
+			this.errors.push({
+				message: `'${op}' 操作符不能用于 '${leftType}' 和 '${rightType}' 之间喵!`,
+				line: node.line!,
+				col: node.col!,
+			});
 		} else if (['-', '*', '/'].includes(op)) {
-			if (leftType !== '摸数' || rightType !== '摸数') {
-				this.errors.push({ message: `'${op}' 操作符只能用于两个 '摸数' 之间喵!`, line: node.line!, col: node.col! });
-			}
-		} else if (['>', '<', '>=', '<='].includes(op)) {
-			if (leftType !== rightType || (leftType !== '摸数' && leftType !== '闲话')) {
-				this.errors.push({
-					message: `'${op}' 操作符只能用于同类型的 '摸数' 或 '闲话' 之间喵!`,
-					line: node.line!,
-					col: node.col!,
-				});
-			}
+			if (leftType === rightType && leftType === '摸数') return;
+			this.errors.push({
+				message: `'${op}' 操作符只能用于两个 '摸数' 之间喵!`,
+				line: node.line!,
+				col: node.col!,
+			});
 		}
 	}
 
@@ -184,16 +177,14 @@ class SymbolAnalyzer {
 			}
 			symbol.references.push(node);
 			this.symbolMap.set(node, symbol);
-		} else {
-			this.errors.push({ message: `找不到名字为 '${node.symbol}' 的变量或计谋喵！`, line: node.line!, col: node.col! });
+			return;
 		}
+		this.errors.push({ message: `找不到名字为 '${node.symbol}' 的变量或计谋喵！`, line: node.line!, col: node.col! });
 	}
 
 	private markAsMoved(name: string) {
 		const symbol = this.lookup(name);
-		if (symbol) {
-			symbol.isMoved = true;
-		}
+		if (symbol) symbol.isMoved = true;
 	}
 
 	private enterScope() {

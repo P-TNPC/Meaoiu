@@ -3,8 +3,7 @@
 import * as AST from '../core/ast.js';
 
 /**
- * 在 AST 中，根据给定的行和列，查找对应的标识符节点。
- * 这是一个经过验证的、唯一正确的实现。
+ * 在 AST 中，根据给定的行和列，查找对应的标识符节点
  * @param ast 要遍历的 AST 根节点
  * @param line 行号 (1-based)
  * @param col 列号 (1-based)

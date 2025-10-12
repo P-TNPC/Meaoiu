@@ -47,7 +47,7 @@ function getVisibleSymbols(scope: Scope): string[] {
 	return Array.from(symbols);
 }
 
-// 主服务计谋
+// 主服务函数
 export function getCompletions(sourceCode: string, position: { line: number; col: number }): { label: string; kind: string }[] {
 	// 不再需要 try-catch，因为宽容的 Parser 会处理所有语法错误
 	const tokens = tokenize(sourceCode, { ignoreComments: true });

@@ -1,23 +1,13 @@
 // src/lsp-services/diagnostics.ts
 
-import { tokenize } from '../core/tokenizer.js';
-import { Parser } from '../core/parser.js';
 import { formatError } from '../core/errorFormatter.js';
-import { analyzeSymbols } from './symbolAnalyzer.js';
-import { builtInFunctionNames } from '../core/builtIns.js';
+import { getDiagnostics } from '../services/diagnostics.js';
 
 export function diagnose(sourceCode: string, filePath: string): void {
 	try {
 		console.log(`[诊断器] 正在分析 ${filePath} ...`);
 
-		// 1. 语法分析
-		const tokens = tokenize(sourceCode, { ignoreComments: true });
-		const parser = new Parser(tokens, 'tolerant');
-		const { program: ast, errors: syntaxErrors } = parser.parse();
-
-		// 2. 语义分析
-		const { errors: semanticErrors } = analyzeSymbols(ast, builtInFunctionNames);
-
+		const { syntaxErrors, semanticErrors } = getDiagnostics(sourceCode);
 		const errors = [...syntaxErrors, ...semanticErrors];
 
 		if (errors.length > 0) {
