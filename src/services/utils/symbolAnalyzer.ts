@@ -1,6 +1,9 @@
-import * as AST from '../core/ast.js';
-import type { builtInFunctionNames } from '../core/builtIns.js';
-import type { MeaoiuType, Scope, SymbolInfo } from './symbolTable.js';
+// src/services/utils/symbolAnalyzer.ts
+
+import * as AST from '../../core/ast.js';
+import type { builtInFunctionNames } from '../../core/builtIns.js';
+import { type MeaoiuType, typeMap } from '../../core/typedef.js';
+import type { Scope, SymbolInfo } from './symbolTable.js';
 
 export interface SemanticError {
 	message: string;
@@ -21,30 +24,30 @@ class SymbolAnalyzer {
 	private inferExpressionType(node: AST.Expression): MeaoiuType {
 		switch (node.type) {
 			case 'NumericLiteral':
-				return '摸数';
+				return typeMap.number;
 			case 'StringLiteral':
-				return '闲话';
+				return typeMap.string;
 			case 'BooleanLiteral':
-				return '好坏';
+				return typeMap.boolean;
 			case 'NullLiteral':
-				return '空碗';
+				return typeMap.null;
 			case 'Identifier':
-				return this.lookup(node.symbol)?.type ?? '不懂';
+				return this.lookup(node.symbol)?.type ?? typeMap.unknown;
 			case 'CallExpression':
 				const func = this.lookup(node.callee.symbol);
-				if (func?.kind === 'function') return '不懂';
-				return '不懂';
+				if (func?.kind === 'function') return typeMap.unknown;
+				return typeMap.unknown;
 			case 'BinaryExpression':
 				const op = (node as AST.BinaryExpression).operator;
-				if (['>', '<', '>=', '<=', '=='].includes(op)) return '好坏';
-				if (['+', '-', '*', '/'].includes(op)) return '摸数';
-				return '不懂';
+				if (['>', '<', '>=', '<=', '=='].includes(op)) return typeMap.boolean;
+				if (['+', '-', '*', '/'].includes(op)) return typeMap.number;
+				return typeMap.unknown;
 			case 'LogicalExpression':
-				return '好坏';
+				return typeMap.boolean;
 			case 'SequenceExpression':
-				return '摸数';
+				return typeMap.number;
 			default:
-				return '不懂';
+				return typeMap.unknown;
 		}
 	}
 
@@ -115,10 +118,10 @@ class SymbolAnalyzer {
 
 	private visitFunctionDeclaration(node: AST.FunctionDeclaration) {
 		// 为计谋本身声明类型：'计谋'
-		this.declare(node.name.symbol, 'function', '计谋', node.name);
+		this.declare(node.name.symbol, 'function', typeMap.function, node.name);
 		this.enterScope();
 		// 为所有贡品声明初始类型：'不懂'
-		node.params.forEach(p => this.declare(p.symbol, 'parameter', '不懂', p));
+		node.params.forEach(p => this.declare(p.symbol, 'parameter', typeMap.unknown, p));
 		this.visit(node.body);
 		this.leaveScope();
 	}
@@ -147,18 +150,19 @@ class SymbolAnalyzer {
 		const leftType = this.inferExpressionType(node.left);
 		const rightType = this.inferExpressionType(node.right);
 		const op = node.operator;
-
+		// 看不懂不说话喵
+		if (leftType === typeMap.unknown || rightType === typeMap.unknown) return;
 		if (['+', '>', '<', '>=', '<='].includes(op)) {
-			if (leftType === rightType && (leftType === '摸数' || leftType === '闲话')) return;
+			if (leftType === rightType && (leftType === typeMap.number || leftType === typeMap.string)) return;
 			this.errors.push({
 				message: `'${op}' 操作符不能用于 '${leftType}' 和 '${rightType}' 之间喵!`,
 				line: node.line!,
 				col: node.col!,
 			});
 		} else if (['-', '*', '/'].includes(op)) {
-			if (leftType === rightType && leftType === '摸数') return;
+			if (leftType === rightType && leftType === typeMap.number) return;
 			this.errors.push({
-				message: `'${op}' 操作符只能用于两个 '摸数' 之间喵!`,
+				message: `'${op}' 操作符只能用于两个 ${typeMap.number} 之间喵!`,
 				line: node.line!,
 				col: node.col!,
 			});
@@ -179,7 +183,7 @@ class SymbolAnalyzer {
 			this.symbolMap.set(node, symbol);
 			return;
 		}
-		this.errors.push({ message: `找不到名字为 '${node.symbol}' 的变量或计谋喵！`, line: node.line!, col: node.col! });
+		this.errors.push({ message: `找不到名字为 '${node.symbol}' 的玩具喵！`, line: node.line!, col: node.col! });
 	}
 
 	private markAsMoved(name: string) {
@@ -230,7 +234,7 @@ export function analyzeSymbols(
 		rootScope.symbols.set(name, {
 			name,
 			kind: 'function',
-			type: '计谋',
+			type: typeMap.function,
 			declarations: [],
 			references: [],
 			isBuiltIn: true,

@@ -1,10 +1,10 @@
-// src/lsp-services/references.ts
+// src/services/references.ts
 
 import { tokenize } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
-import { analyzeSymbols } from './symbolAnalyzer.js';
+import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
-import { findIdentifierAt } from './astUtils.js';
+import { findIdentifierAt } from './utils/astUtils.js';
 import * as AST from '../core/ast.js';
 
 export function findReferences(sourceCode: string, position: { line: number; col: number }): AST.AstNode[] {

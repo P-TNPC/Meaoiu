@@ -1,7 +1,9 @@
+// src/services/highlight.ts
+
 import * as AST from '../core/ast.js';
 import { tokenize } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
-import { analyzeSymbols } from './symbolAnalyzer.js';
+import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
 
 type HighlightTokens = { line: number; col: number; length: number; tokenType: number; tokenModifiers: number }[];

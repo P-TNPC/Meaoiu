@@ -1,9 +1,16 @@
 {
 	"name": "meaoiu",
-	"version": "0.0.15",
+	"version": "0.0.17",
 	"description": "喵喵喵",
 	"license": "MIT",
-	"author": "TNPC",
+	"author": {
+		"name": "TNPC",
+		"email": "TNPC@TNPC.space"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/P-TNPC/Meaoiu.git"
+	},
 	"type": "module",
 	"bin": {
 		"meaoiu": "dist/cli/main.js"

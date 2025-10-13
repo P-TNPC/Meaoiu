@@ -1,4 +1,4 @@
-// src/lsp-services/formatter.ts
+// src/services/formatter.ts
 
 import { tokenize, KEYWORDS, type Token } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';

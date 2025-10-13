@@ -1,11 +1,11 @@
-// src/lsp-services/definition.ts
+// src/services/definition.ts
 
 import { tokenize } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
-import { analyzeSymbols } from './symbolAnalyzer.js';
+import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
-import type { SymbolInfo } from './symbolTable.js';
-import { findIdentifierAt } from './astUtils.js';
+import type { SymbolInfo } from './utils/symbolTable.js';
+import { findIdentifierAt } from './utils/astUtils.js';
 
 export function findDefinition(sourceCode: string, position: { line: number; col: number }): SymbolInfo | undefined {
 	// Parser 现在以 'tolerant' 模式运行

@@ -1,4 +1,5 @@
 // src/core/parser.ts
+
 import type { Token, TokenType } from './tokenizer.js';
 import * as AST from './ast.js';
 

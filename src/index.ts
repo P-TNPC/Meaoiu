@@ -1,3 +1,5 @@
+// src/index.ts
+
 export * from './services/completions.js';
 export * from './services/definition.js';
 export * from './services/diagnostics.js';
@@ -5,5 +7,5 @@ export * from './services/formatter.js';
 export * from './services/highlight.js';
 export * from './services/hover.js';
 export * from './services/references.js';
-export * from './services/symbolAnalyzer.js';
-export * from './services/symbolTable.js';
+export * from './services/utils/symbolAnalyzer.js';
+export * from './services/utils/symbolTable.js';

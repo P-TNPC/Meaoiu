@@ -1,7 +1,9 @@
-// src/core/interpreter.ts
-import * as AST from './ast.js';
+// src/core/run/interpreter.ts
+
+import * as AST from '../ast.js';
 import { Environment } from './environment.js';
-import { type BuiltInFunctions, isBuiltInFunctionName } from './builtIns.js';
+import { type BuiltInFunctions, isBuiltInFunctionName } from '../builtIns.js';
+import { getMeaoiuType, typeMap } from '../typedef.js';
 
 const BREAK_SIGNAL = { type: 'BREAK_SIGNAL' };
 class ReturnValue {
@@ -81,16 +83,18 @@ export async function evaluate(node: AST.AstNode, env: Environment, builtIns: Bu
 
 				if (['-', '*', '/'].includes(op)) {
 					if (typeof leftVal !== 'number' || typeof rightVal !== 'number') {
-						throw new Error(`'${op}' 操作符只能用于两个 '摸数' 之间喵!`);
+						throw new Error(`'${op}' 操作符只能用于两个 {${typeMap.number}} 之间喵!`);
 					}
 				}
 
 				if (['+', '>', '<', '>=', '<='].includes(op)) {
 					if (typeof leftVal !== typeof rightVal) {
-						throw new Error(`'${op}' 操作符不能用于不同类型之间喵!`);
+						throw new Error(
+							`'${op}' 操作符只能给同类用喵! ${getMeaoiuType(leftVal)} 和 ${getMeaoiuType(rightVal)} 不可以喵!`
+						);
 					}
 					if (typeof leftVal !== 'number' && typeof leftVal !== 'string') {
-						throw new Error(`'${op}' 操作符只能用于 '摸数' 或 '闲话' 之间喵!`);
+						throw new Error(`'${op}' 操作符只能用于 {${typeMap.number}} 或 {${typeMap.string}} 之间喵!`);
 					}
 				}
 				switch (op) {
@@ -202,7 +206,7 @@ export async function evaluate(node: AST.AstNode, env: Environment, builtIns: Bu
 				const result = await evaluate(func.body, functionEnv, builtIns);
 				if (result instanceof ReturnValue) return result.value;
 				if (result === BREAK_SIGNAL) {
-					console.warn(`警告喵: 在计谋 '${funcName}' 中，说'累了'也要继续玩喵。`);
+					console.warn(`警告喵: 在${typeMap.function} '${funcName}' 中，说'累了'也要继续玩喵。`);
 				}
 				return null;
 			}

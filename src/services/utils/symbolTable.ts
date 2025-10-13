@@ -1,7 +1,7 @@
-// src/lsp-services/symbolTable.ts
-import type * as AST from '../core/ast.js';
+// src/services/utils/symbolTable.ts
 
-export type MeaoiuType = '摸数' | '闲话' | '好坏' | '空碗' | '计谋' | '不懂';
+import type * as AST from '../../core/ast.js';
+import type { MeaoiuType } from '../../core/typedef.js';
 
 // 描述一个符号（变量、计谋等）的信息
 export interface SymbolInfo {

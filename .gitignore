@@ -2,7 +2,4 @@
 /node_modules
 /package-lock.json
 /test.miu
-/test_block_expr.miu
-/test_coercion.miu
-/test_completion.miu
-/test_errors.miu
+/test_*.miu

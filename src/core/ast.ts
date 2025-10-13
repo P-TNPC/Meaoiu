@@ -1,4 +1,5 @@
 // src/core/ast.ts
+
 import type { Token } from './tokenizer.js';
 
 export interface AstNode {
@@ -119,7 +120,7 @@ export interface BooleanLiteral extends AstNode {
 
 export interface NullLiteral extends AstNode {
 	type: 'NullLiteral';
-	value: null; // The actual value will be JavaScript's null
+	value: null;
 }
 
 export interface Identifier extends AstNode {

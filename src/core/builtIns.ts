@@ -1,5 +1,7 @@
 // src/core/builtIns.ts
-import type { MeaoiuRuntimeIO } from './io.js';
+
+import type { MeaoiuRuntimeIO } from './run/io.js';
+import { getMeaoiuType } from './typedef.js';
 
 export const builtInFunctionNames = [
 	'喵',
@@ -30,65 +32,53 @@ export function isBuiltInFunctionName(name: string): name is (typeof builtInFunc
 
 export const createBuiltInFunctions = (io: MeaoiuRuntimeIO): BuiltInFunctions => ({
 	// I/O
-	喵: (args: any[]) => io.print(args),
-	祈求: async (args: any[]) => {
-		return io.prompt(args[0] ?? '> ');
-	},
+	喵: args => io.print(args),
+	祈求: async args => io.prompt(args[0] ?? '> '),
 
 	// Type Conversion
-	变摸数: (args: any[]) => {
+	变摸数: args => {
 		const num = parseFloat(args[0]);
 		return isNaN(num) ? null : num;
 	},
-	喵译: (args: any[]) => {
-		return String(args[0]);
-	},
-	嗅嗅: (args: any[]) => {
-		// typeof
-		if (args[0] === null) return '空碗';
-		if (typeof args[0] === 'number') return '摸数';
-		if (typeof args[0] === 'string') return '闲话';
-		if (typeof args[0] === 'boolean') return '好坏';
-		return '不懂';
-	},
+	喵译: args => String(args[0]),
+	嗅嗅: args => getMeaoiuType(args[0]),
 
 	// Logic
-	才怪: (args: any[]) => !args[0], // not
+	才怪: args => !args[0], // not
 
 	// Math
-	理直气壮: (args: any[]) => Math.abs(args[0]),
-	差不多: (args: any[]) => Math.round(args[0]),
-	抢大的: (args: any[]) => Math.max(...args),
-	吃剩的: (args: any[]) => Math.min(...args),
-	摸余: (args: any[]) => args[0] % args[1],
+	理直气壮: args => Math.abs(args[0]),
+	差不多: args => Math.round(args[0]),
+	抢大的: args => Math.max(...args),
+	吃剩的: args => Math.min(...args),
+	摸余: args => args[0] % args[1],
 
 	// String
-	找尾巴: (args: any[]) => String(args[0]).length,
-	喵语连珠: (args: any[]) => args.map(String).join(''),
+	找尾巴: args => String(args[0]).length,
+	喵语连珠: args => args.map(String).join(''),
 
 	// Thematic & Time
-	打盹: (args: any[]) => {
+	打盹: async args => {
 		const ms = (args[0] ?? 1) * 1000;
-		const start = Date.now();
-		while (Date.now() - start < ms) {}
+		await new Promise<void>(resolve => setTimeout(resolve, ms));
 	},
-	磨爪: (_args: any[]) => io.print([' /\\_/\\ \n( >.< )\n-=(|)=-  --< scratching sounds >--']),
-	呼噜: (args: any[]) => {
+	磨爪: _args => io.print([' /\\_/\\ \n( >.< )\n-=(|)=-  --< scratching sounds >--']),
+	呼噜: args => {
 		const times = args[0] ?? Math.ceil(Math.random() * 3);
 		for (let i = 0; i < times; i++) {
 			io.print(['咕噜...咕噜...']);
 		}
 	},
-	添乱: (args: any[]) => {
+	添乱: args => {
 		const [min, max] = args;
 		return Math.floor(Math.random() * (max - min + 1)) + min;
 	},
-	猫咪艺术: (args: any[]) => {
+	猫咪艺术: args => {
 		const style = args[0] ?? '开心';
 		if (style === '开心') io.print([' /\\_/\\ \n( ^.^ )\n > ^ < ']);
 		else io.print([' /\\_/\\ \n( o.o )\n > ^ < ']);
 	},
-	哈气: (args: any[]) => {
+	哈气: args => {
 		throw new Error(...args);
 	},
 });

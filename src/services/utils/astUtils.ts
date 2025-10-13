@@ -1,6 +1,6 @@
-// src/lsp-services/astUtils.ts
+// src/services/utils/astUtils.ts
 
-import * as AST from '../core/ast.js';
+import * as AST from '../../core/ast.js';
 
 /**
  * 在 AST 中，根据给定的行和列，查找对应的标识符节点

@@ -1,6 +1,6 @@
-// logger.ts
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+// src/core/run/logger.ts
 
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 const LEVEL_PRIORITY: Record<LogLevel, number> = {
 	debug: 0,
 	info: 1,
