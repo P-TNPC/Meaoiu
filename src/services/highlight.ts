@@ -1,6 +1,6 @@
 // src/services/highlight.ts
 
-import * as AST from '../core/ast.js';
+import type * as AST from '../core/ast.js';
 import { tokenize } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
 import { analyzeSymbols } from './utils/symbolAnalyzer.js';

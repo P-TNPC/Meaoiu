@@ -29,7 +29,7 @@ export function formatError(error: Error, sourceCode: string, filePath: string):
 
 	const prefix = errorLine.substring(0, col - 1);
 	const prefixWidth = stringWidth(prefix);
-	const indicator = ' '.repeat(prefixWidth) + '^';
+	const indicator = `${' '.repeat(prefixWidth)}^`;
 
 	const fileName = path.basename(filePath);
 	const formattedMessage = [

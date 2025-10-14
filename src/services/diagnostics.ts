@@ -12,8 +12,5 @@ export function getDiagnostics(sourceCode: string) {
 
 	const { errors: semanticErrors } = analyzeSymbols(ast, builtInFunctionNames);
 
-	return {
-		syntaxErrors,
-		semanticErrors,
-	};
+	return { syntaxErrors, semanticErrors };
 }

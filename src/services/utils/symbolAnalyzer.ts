@@ -1,6 +1,6 @@
 // src/services/utils/symbolAnalyzer.ts
 
-import * as AST from '../../core/ast.js';
+import type * as AST from '../../core/ast.js';
 import type { builtInFunctionNames } from '../../core/builtIns.js';
 import { type MeaoiuType, typeMap } from '../../core/typedef.js';
 import type { Scope, SymbolInfo } from './symbolTable.js';

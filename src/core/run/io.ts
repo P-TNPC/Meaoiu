@@ -50,12 +50,12 @@ export function createRuntimeIO(config: IOConfig): MeaoiuRuntimeIO {
 	const useColor = config.useColor ?? true;
 
 	return {
-		prompt: (question: string) => config.onPrompt(question),
-		print: (args: any[]) => {
+		prompt: question => config.onPrompt(question),
+		print: args => {
 			const outputString = args
 				.map(arg => {
 					// 流水线开始：原始值 -> Meaoiu字符串 -> 上色 (若需)
-					let strValue = toMeaoiuString(arg);
+					const strValue = toMeaoiuString(arg);
 					return useColor ? colorize(arg, strValue) : strValue;
 				})
 				.join(' ');

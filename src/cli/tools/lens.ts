@@ -12,7 +12,7 @@ export function definition(sourceCode: string, posRaw: string, filePath: string)
 		return;
 	}
 	const definitionInfo = findDefinition(sourceCode, pos);
-	if (definitionInfo && definitionInfo.declarations?.[0]) {
+	if (definitionInfo?.declarations?.[0]) {
 		const defNode = definitionInfo.declarations[0];
 		console.log(`[定义查找] '${definitionInfo.name}' 在 ${filePath}:${defNode.line}:${defNode.col} 被定义。`);
 		return;

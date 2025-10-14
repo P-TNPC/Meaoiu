@@ -1,6 +1,6 @@
 // src/core/run/interpreter.ts
 
-import * as AST from '../ast.js';
+import type * as AST from '../ast.js';
 import { Environment } from './environment.js';
 import { type BuiltInFunctions, isBuiltInFunctionName } from '../builtIns.js';
 import { getMeaoiuType, typeMap } from '../typedef.js';

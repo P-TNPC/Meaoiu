@@ -1,7 +1,7 @@
 // src/core/parser.ts
 
 import type { Token, TokenType } from './tokenizer.js';
-import * as AST from './ast.js';
+import type * as AST from './ast.js';
 
 export interface SyntaxError {
 	message: string;
@@ -49,14 +49,11 @@ export class Parser {
 		let tok = this.tokens[this.position]!;
 		while (tok.type === 'COMMENT') {
 			this.commentBuffer.push(tok);
-			if (this.position < this.tokens.length - 1) {
-				this.position++;
-				tok = this.tokens[this.position]!;
-				continue;
-			} else {
-				// 到达 EOF 之前最后的悄悄话，返回 EOF 的情形会在下次调用处理
-				break;
-			}
+			// 到达 EOF 之前最后的悄悄话，返回 EOF 的情形会在下次调用处理
+			if (this.position >= this.tokens.length - 1) break;
+
+			this.position++;
+			tok = this.tokens[this.position]!;
 		}
 
 		// 返回当前非悄悄话 token（或 EOF）
@@ -261,8 +258,8 @@ export class Parser {
 			const message = e.message.replace(match[0], '').trim();
 			return {
 				message: message,
-				line: parseInt(line!),
-				col: parseInt(col!),
+				line: parseInt(line!, 10),
+				col: parseInt(col!, 10),
 			};
 		}
 		const token = this.current();
@@ -389,7 +386,7 @@ export class Parser {
 		const consequent = this.parseBlockStatement();
 		this.expect('KEYWORD_CONFIRM', "想法后面需要一个 '好不好?' 来提问喵!");
 		const test = this.parseExpression();
-		let alternate: AST.Statement | undefined = undefined;
+		let alternate: AST.Statement | undefined;
 
 		if (this.current().type === 'KEYWORD_ELSE') {
 			this.advance();

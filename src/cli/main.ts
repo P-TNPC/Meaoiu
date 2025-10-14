@@ -67,7 +67,7 @@ program
 			const builtIns = createBuiltInFunctions(cliIO);
 			await run(sourceCode, builtIns, file);
 		} catch (err) {
-			console.error(`坏了喵！读取文件失败: ${file}`);
+			console.error(`坏了喵！读取文件 ${file} 失败: `, err);
 		}
 	});
 

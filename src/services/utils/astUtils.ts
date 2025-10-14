@@ -1,6 +1,6 @@
 // src/services/utils/astUtils.ts
 
-import * as AST from '../../core/ast.js';
+import type * as AST from '../../core/ast.js';
 
 /**
  * 在 AST 中，根据给定的行和列，查找对应的标识符节点
@@ -9,7 +9,7 @@ import * as AST from '../../core/ast.js';
  * @param col 列号 (1-based)
  */
 export function findIdentifierAt(ast: AST.AstNode, line: number, col: number): AST.Identifier | undefined {
-	let found: AST.Identifier | undefined = undefined;
+	let found: AST.Identifier | undefined;
 
 	function walk(node: AST.AstNode | undefined) {
 		if (!node || found) return;
@@ -32,11 +32,8 @@ export function findIdentifierAt(ast: AST.AstNode, line: number, col: number): A
 			if (key === 'line' || key === 'col' || key === 'endLine' || key === 'endCol') continue;
 
 			const value = (node as any)[key];
-			if (Array.isArray(value)) {
-				value.forEach((child) => walk(child));
-			} else if (value && typeof value === 'object' && value.type) {
-				walk(value);
-			}
+			if (Array.isArray(value)) value.forEach(child => walk(child));
+			else if (value?.type && typeof value === 'object') walk(value);
 		}
 	}
 

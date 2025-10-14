@@ -1,8 +1,8 @@
 // src/services/formatter.ts
 
+import type * as AST from '../core/ast.js';
 import { tokenize, KEYWORDS, type Token } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
-import * as AST from '../core/ast.js';
 
 const KEYWORD_VALUES = new Set(Object.values(KEYWORDS));
 interface FormattingOptions {
@@ -19,12 +19,12 @@ function isKeyword(symbol: string): boolean {
 function printLeadingComments(node: AST.AstNode, options: FormattingOptions): string {
 	const comments = (node as any).leadingComments as Token[] | undefined;
 	if (!comments || comments.length === 0) return '';
-	return comments.map((c) => `${indent(options)}(${c.value})`).join('\n') + '\n';
+	return comments.map(c => `${indent(options)}(${c.value})`).join('\n') + '\n';
 }
 function printTrailingComments(node: AST.AstNode): string {
 	const comments = (node as any).trailingComments as Token[] | undefined;
 	if (!comments || comments.length === 0) return '';
-	return ' ' + comments.map((c) => `(${c.value})`).join(' ');
+	return ' ' + comments.map(c => `(${c.value})`).join(' ');
 }
 
 function printIdentifier(node: AST.Identifier): string {
@@ -67,7 +67,7 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 				break;
 			}
 			const blockContent = n.body
-				.map((stmt) => printNodeContent(stmt, nextLevelOptions) + '~' + printTrailingComments(stmt))
+				.map(stmt => printNodeContent(stmt, nextLevelOptions) + '~' + printTrailingComments(stmt))
 				.join('\n');
 			content = `[#\n${blockContent}\n${indent(options)}#]`;
 			break;
@@ -88,7 +88,7 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 		case 'CallExpression': {
 			const n = node as AST.CallExpression;
 			const a = n.args
-				.map((arg) => {
+				.map(arg => {
 					const p = arg.isClone ? '高仿 ' : '';
 					return p + printNodeContent(arg.expression, { ...options, level: 0 });
 				})
@@ -108,7 +108,7 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 		}
 		case 'FunctionDeclaration': {
 			const n = node as AST.FunctionDeclaration;
-			const p = n.params.map((p) => printIdentifier(p)).join(', ');
+			const p = n.params.map(p => printIdentifier(p)).join(', ');
 			content = `${indent(options)}想要[=${p}=]${printIdentifier(n.name)} ${printNodeContent(n.body, options)}`;
 			break;
 		}

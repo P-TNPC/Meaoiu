@@ -17,16 +17,16 @@ const currentLevel = getLogLevel();
 
 const logger = {
 	debug: (...args: any[]) =>
-		LEVEL_PRIORITY['debug'] >= LEVEL_PRIORITY[currentLevel] ? console.debug('[DEBUG]', ...args) : undefined,
+		LEVEL_PRIORITY.debug >= LEVEL_PRIORITY[currentLevel] ? console.debug('[DEBUG]', ...args) : undefined,
 
 	info: (...args: any[]) =>
-		LEVEL_PRIORITY['info'] >= LEVEL_PRIORITY[currentLevel] ? console.info('[INFO]', ...args) : undefined,
+		LEVEL_PRIORITY.info >= LEVEL_PRIORITY[currentLevel] ? console.info('[INFO]', ...args) : undefined,
 
 	warn: (...args: any[]) =>
-		LEVEL_PRIORITY['warn'] >= LEVEL_PRIORITY[currentLevel] ? console.warn('[WARN]', ...args) : undefined,
+		LEVEL_PRIORITY.warn >= LEVEL_PRIORITY[currentLevel] ? console.warn('[WARN]', ...args) : undefined,
 
 	error: (...args: any[]) =>
-		LEVEL_PRIORITY['error'] >= LEVEL_PRIORITY[currentLevel] ? console.error('[ERROR]', ...args) : undefined,
+		LEVEL_PRIORITY.error >= LEVEL_PRIORITY[currentLevel] ? console.error('[ERROR]', ...args) : undefined,
 };
 
 export default logger;

@@ -1,6 +1,6 @@
 // src/core/run/environment.ts
 
-import * as AST from '../ast.js';
+import type * as AST from '../ast.js';
 import logger from './logger.js';
 
 type VariableValue = any | { isReference: true; scope: Environment; name: string };
@@ -24,9 +24,9 @@ export class Environment {
 
 	public declare(name: string, value: any, kind: 'Move' | 'Copy'): any {
 		if (this.variables.has(name)) throw new Error(`变量 '${name}' 已经被“蹭”过一次了喵！`);
-		let finalValue = this.resolveValue(value);
+		const finalValue = this.resolveValue(value);
 		logger.debug(`[ENV #${this.id}] DECLARE: '${name}' with value:`, finalValue, `(kind: ${kind})`);
-		if (value && value.isVariableReference && kind === 'Move') {
+		if (value?.isVariableReference && kind === 'Move') {
 			const sourceScope = this.findVariableScope(value.name);
 			if (sourceScope) sourceScope.variables.get(value.name)!.moved = true;
 		}
@@ -46,12 +46,12 @@ export class Environment {
 			return targetVar.value.scope.assign(targetVar.value.name, value, kind);
 		}
 
-		if (value && value.isVariableReference && kind === 'Move') {
+		if (value?.isVariableReference && kind === 'Move') {
 			const sourceScope = this.findVariableScope(value.name);
 			if (sourceScope) sourceScope.variables.get(value.name)!.moved = true;
 		}
 
-		let finalValue = this.resolveValue(value);
+		const finalValue = this.resolveValue(value);
 		targetScope.variables.set(name, { value: finalValue, moved: false });
 		return finalValue;
 	}

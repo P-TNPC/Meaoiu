@@ -38,7 +38,7 @@ export const createBuiltInFunctions = (io: MeaoiuRuntimeIO): BuiltInFunctions =>
 	// Type Conversion
 	变摸数: args => {
 		const num = parseFloat(args[0]);
-		return isNaN(num) ? null : num;
+		return Number.isNaN(num) ? null : num;
 	},
 	喵译: args => String(args[0]),
 	嗅嗅: args => getMeaoiuType(args[0]),

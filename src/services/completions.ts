@@ -3,7 +3,7 @@
 import { tokenize, KEYWORDS } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
-import * as AST from '../core/ast.js';
+import type * as AST from '../core/ast.js';
 import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import type { Scope } from './utils/symbolTable.js';
 
@@ -41,7 +41,7 @@ function getVisibleSymbols(scope: Scope): string[] {
 	const symbols = new Set<string>();
 	let current: Scope | undefined = scope;
 	while (current) {
-		current.symbols.forEach((symbol) => symbols.add(symbol.name));
+		current.symbols.forEach(symbol => symbols.add(symbol.name));
 		current = current.parent;
 	}
 	return Array.from(symbols);
@@ -57,8 +57,8 @@ export function getCompletions(sourceCode: string, position: { line: number; col
 	const currentScope = findScopeAt(ast, position, nodeScopeMap) ?? rootScope;
 	const visibleSymbols = getVisibleSymbols(currentScope);
 
-	const keywordSuggestions = Object.keys(KEYWORDS).map((k) => ({ label: k, kind: 'keyword' }));
-	const symbolSuggestions = visibleSymbols.map((s) => ({ label: s, kind: 'variable' }));
+	const keywordSuggestions = Object.keys(KEYWORDS).map(k => ({ label: k, kind: 'keyword' }));
+	const symbolSuggestions = visibleSymbols.map(s => ({ label: s, kind: 'variable' }));
 
 	return [...symbolSuggestions, ...keywordSuggestions];
 }

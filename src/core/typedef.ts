@@ -16,7 +16,7 @@ export const typeMap: StrictTypeMap = {
 } as const;
 
 export function getMeaoiuType(v: unknown): MeaoiuType {
-	if (v === null) return typeMap.null;
+	if (v === null || v === undefined) return typeMap.null;
 	const t = typeof v;
 	if (t in typeMap) return typeMap[t as TypeMapKey];
 	return typeMap.unknown;
