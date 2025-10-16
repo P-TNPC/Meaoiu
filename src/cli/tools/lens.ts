@@ -43,7 +43,7 @@ export function hover(sourceCode: string, posRaw: string) {
 	}
 	const hoverInfo = getHoverInfo(sourceCode, pos);
 	if (hoverInfo) {
-		console.log('--- 悬停信息 ---');
+		console.log('---- 悬停信息 ----');
 		console.log(hoverInfo);
 		console.log('-----------------');
 		return;

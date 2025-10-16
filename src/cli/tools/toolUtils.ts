@@ -1,6 +1,7 @@
 // src/cli/tools/toolUtils.ts
 
 import * as path from 'path';
+import readline from 'readline';
 import stringWidth from 'string-width';
 
 export function parsePosition(pos?: string): { line: number; col: number } | null {
@@ -44,4 +45,17 @@ export function formatError(error: Error, sourceCode: string, filePath: string):
 	].join('\n');
 
 	return formattedMessage;
+}
+
+export async function prompt(question: string): Promise<string> {
+	const rl = readline.createInterface({
+		input: process.stdin,
+		output: process.stdout,
+	});
+	return new Promise(resolve => {
+		rl.question(question, answer => {
+			rl.close();
+			resolve(answer);
+		});
+	});
 }

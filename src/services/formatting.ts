@@ -1,4 +1,4 @@
-// src/services/formatter.ts
+// src/services/formatting.ts
 
 import type * as AST from '../core/ast.js';
 import { tokenize, KEYWORDS, type Token } from '../core/tokenizer.js';
@@ -29,9 +29,7 @@ function printTrailingComments(node: AST.AstNode): string {
 
 function printIdentifier(node: AST.Identifier): string {
 	const symbol = node.symbol;
-	if (isKeyword(symbol)) {
-		return `{${symbol}}`;
-	}
+	if (isKeyword(symbol)) return `{${symbol}}`;
 	return symbol;
 }
 
@@ -53,9 +51,11 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 				parts.push(stmtString);
 				const nextStmt = body[i + 1];
 				if (nextStmt) {
-					if (stmt.type === 'FunctionDeclaration' || nextStmt.type === 'FunctionDeclaration') {
-						parts.push('');
-					}
+					const gap = nextStmt.line && stmt.endLine ? nextStmt.line - stmt.endLine - 1 : 0;
+					const commentCount = nextStmt.leadingComments?.length ?? 0;
+					const hasFunction = stmt.type === 'FunctionDeclaration' || nextStmt.type === 'FunctionDeclaration';
+					const eL = Math.max(gap - commentCount, hasFunction ? 1 : 0);
+					if (eL > 0) parts.push(...Array(eL).fill(''));
 				}
 			}
 			return parts.join('\n');
@@ -100,9 +100,7 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 		case 'IfStatement': {
 			const n = node as AST.IfStatement;
 			let r = `${printNodeContent(n.consequent, options)} 好不好? ${printNodeContent(n.test, { ...options, level: 0 })}`;
-			if (n.alternate) {
-				r += `\n${indent(options)}不然 ${printNodeContent(n.alternate, options)}`;
-			}
+			if (n.alternate) r += `\n${indent(options)}不然 ${printNodeContent(n.alternate, options)}`;
 			content = `${indent(options)}${r}`;
 			break;
 		}
@@ -168,15 +166,20 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 		case 'ErrorNode':
 			content = `(喵！解析错误: ${(node as AST.ErrorNode).message})`;
 			break;
+		case 'ExpressionStatement': {
+			const n = node as AST.ExpressionStatement;
+			content = printNodeContent(n.expression, options);
+			break;
+		}
 		default:
-			console.warn(`[Formatter] Unhandled node type: ${node.type}`);
+			console.warn(`[格式化器] [${node.line}:${node.col}]目前无法整理此类节点: ${node.type}`);
 			content = '';
 	}
 
 	return leading + content;
 }
 
-export function format(sourceCode: string): string {
+export function getFormattedCode(sourceCode: string): string {
 	const options: FormattingOptions = { indentChar: '\t', level: 0 };
 	const parser = new Parser(tokenize(sourceCode, { ignoreComments: false }), 'tolerant');
 	const { program: ast } = parser.parse();
