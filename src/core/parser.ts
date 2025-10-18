@@ -189,7 +189,6 @@ export class Parser {
 		return { program, errors: this.errors };
 	}
 
-	// 改进的错误恢复：在语句层面查找恢复点（与表达式里的恢复分开）
 	private synchronize(): void {
 		// 首先尝试找到 TERMINATOR 或语句开始
 		while (this.current().type !== 'EOF') {
@@ -218,7 +217,6 @@ export class Parser {
 		}
 	}
 
-	// 更细粒度：表达式内部恢复（会至少前进一个 token）
 	private consumeToRecoveryPoint(): void {
 		// 用于 parseExpression 内部：跳到 , / terminator / statement start / EOF
 		let moved = false;
@@ -237,7 +235,6 @@ export class Parser {
 		}
 	}
 
-	// 辅助方法：判断是否是语句开始
 	private isStatementStart(type: TokenType): boolean {
 		return [
 			'KEYWORD_USE',
@@ -319,7 +316,11 @@ export class Parser {
 					s = this.parseBlockOrIfStatement();
 					break;
 				case 'IDENTIFIER':
-					if (this.peek().type === 'KEYWORD_IS' || this.peek().type === 'KEYWORD_LIKE') {
+					if (
+						this.peek().type === 'KEYWORD_IS' ||
+						this.peek().type === 'KEYWORD_LIKE' ||
+						this.peek().type === 'KEYWORD_MOVE_ASSIGN'
+					) {
 						s = this.parseAssignmentStatement();
 					} else {
 						// 如果标识符后面不是赋值，那么它可能是一个表达式语句的开始
@@ -427,19 +428,30 @@ export class Parser {
 		const sT = this.advance();
 		const i = this.parseIdentifier();
 		const aT = this.advance();
-		let k: 'Move' | 'Copy';
+		let k: AST.AssignmentKind;
 
 		if (aT.type === 'KEYWORD_IS') {
+			// 就是
 			if (this.current().type === 'KEYWORD_CLONE') {
+				// 就是 高仿
 				this.advance();
 				k = 'Copy';
-			} else {
+			} else if (this.current().type === 'KEYWORD_SNATCH') {
+				// 就是 抢走
+				this.advance();
 				k = 'Move';
+			} else {
+				// 就是
+				k = 'Reference';
 			}
 		} else if (aT.type === 'KEYWORD_LIKE') {
+			// 就像
 			k = 'Copy';
+		} else if (aT.type === 'KEYWORD_MOVE_ASSIGN') {
+			// 才是
+			k = 'Move';
 		} else {
-			throw new Error(`[${aT.line}:${aT.col}] 声明变量需要使用 '是' 或 '像' 喵`);
+			throw new Error(`[${aT.line}:${aT.col}] 声明变量需要使用 '就是', '就像', 或 '才是' 喵`);
 		}
 
 		const v = this.parseExpression();
@@ -459,19 +471,30 @@ export class Parser {
 		const sT = this.current();
 		const a = this.parseIdentifier();
 		const aT = this.advance();
-		let k: 'Move' | 'Copy';
+		let k: AST.AssignmentKind;
 
 		if (aT.type === 'KEYWORD_IS') {
+			// 就是
 			if (this.current().type === 'KEYWORD_CLONE') {
+				// 就是 高仿
 				this.advance();
 				k = 'Copy';
-			} else {
+			} else if (this.current().type === 'KEYWORD_SNATCH') {
+				// 就是 抢走
+				this.advance();
 				k = 'Move';
+			} else {
+				// 就是
+				k = 'Reference';
 			}
 		} else if (aT.type === 'KEYWORD_LIKE') {
+			// 就像
 			k = 'Copy';
+		} else if (aT.type === 'KEYWORD_MOVE_ASSIGN') {
+			// 才是
+			k = 'Move';
 		} else {
-			throw new Error(`[${aT.line}:${aT.col}] 赋值需要使用 '是' 或 '像' 喵`);
+			throw new Error(`[${aT.line}:${aT.col}] 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
 		}
 
 		const v = this.parseExpression();
@@ -645,7 +668,11 @@ export class Parser {
 					o = 'NAND';
 					break;
 				default:
-					throw new Error(`[${this.current().line}:${this.current().col}] 逻辑把戏需要闭合喵`);
+					const prevToken = this.tokens[this.position - 1]!;
+					const errLine = prevToken.line;
+					const errCol = prevToken.col + prevToken.value.length;
+					this.position--;
+					throw new Error(`[${errLine}:${errCol}] 语法错误喵: 这里要用「有好」或「有坏」闭合喵`);
 			}
 
 			l = {
@@ -681,7 +708,11 @@ export class Parser {
 					o = 'NOR';
 					break;
 				default:
-					throw new Error(`[${this.current().line}:${this.current().col}] 逻辑把戏需要闭合喵`);
+					const prevToken = this.tokens[this.position - 1]!;
+					const errLine = prevToken.line;
+					const errCol = prevToken.col + prevToken.value.length;
+					this.position--;
+					throw new Error(`[${errLine}:${errCol}] 语法错误喵: 这里要用「都好」或「都坏」闭合喵`);
 			}
 
 			l = {
@@ -843,13 +874,14 @@ export class Parser {
 				};
 				break;
 			case 'KEYWORD_CALL':
-				// 把指针往回移动，让 parseCallExpression 处理
-				this.position--;
+				this.position--; // 把指针拨回去，让 parseCallExpression 处理
 				return this.parseCallExpression();
 			case 'BLOCK_START':
-				// 如果一个表达式以 [# 开头，它就是一个块表达式！
-				this.position--;
+				this.position--; // 把指针拨回去，让 parseBlockOrIfStatement 处理
 				return this.parseBlockOrIfStatement() as AST.Expression;
+			case 'KEYWORD_LOOP':
+				this.position--; // 把指针拨回去，让 parseLoopStatement 处理
+				return this.parseLoopStatement();
 			default:
 				// 未知 token：在 strict 模式抛；在 tolerant 模式生成 ErrorNode 并至少前进一个 token
 				const err = new Error(`[${t.line}:${t.col}] 不认识的把戏喵: ${t.value}`);

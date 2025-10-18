@@ -135,7 +135,7 @@ export async function evaluate(node: AST.AstNode, env: Environment, builtIns: Bu
 			}
 			case 'VariableDeclaration': {
 				const varDec = node as AST.VariableDeclaration;
-				let value = (await evaluate(varDec.value, env, builtIns)) ?? null;
+				let value = (await evaluate(varDec.value, env, builtIns));
 				if (value instanceof ReturnValue) value = value.value;
 				return env.declare(varDec.identifier.symbol, value, varDec.kind);
 			}

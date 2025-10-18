@@ -11,6 +11,7 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 const getLogLevel = (): LogLevel => {
 	const level = process.env['LOG_LEVEL']?.toLowerCase() as LogLevel;
 	return level && LEVEL_PRIORITY[level] !== undefined ? level : 'warn';
+	// return level && LEVEL_PRIORITY[level] !== undefined ? level : 'debug';
 };
 
 const currentLevel = getLogLevel();

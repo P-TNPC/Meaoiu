@@ -6,6 +6,9 @@ export type TokenType =
 	| 'KEYWORD_USE'
 	| 'KEYWORD_IS'
 	| 'KEYWORD_LIKE'
+	| 'KEYWORD_CLONE'
+	| 'KEYWORD_MOVE_ASSIGN' // 新增: 才是
+	| 'KEYWORD_SNATCH' // 新增: 抢走
 	| 'KEYWORD_CONFIRM'
 	| 'KEYWORD_ELSE'
 	| 'KEYWORD_LOOP'
@@ -13,7 +16,6 @@ export type TokenType =
 	| 'KEYWORD_DEF'
 	| 'KEYWORD_CALL'
 	| 'KEYWORD_RETURN'
-	| 'KEYWORD_CLONE'
 	| 'NUMBER'
 	| 'STRING'
 	| 'BOOLEAN'
@@ -24,7 +26,7 @@ export type TokenType =
 	| 'BLOCK_START'
 	| 'BLOCK_END'
 	| 'TERMINATOR'
-	| 'MATCH'
+	| 'ACCESSOR'
 	| 'OPERATOR'
 	| 'COMMA'
 	| 'EOF'
@@ -40,6 +42,9 @@ export const KEYWORDS: Record<string, TokenType> = {
 	蹭: 'KEYWORD_USE',
 	就是: 'KEYWORD_IS',
 	就像: 'KEYWORD_LIKE',
+	高仿: 'KEYWORD_CLONE',
+	才是: 'KEYWORD_MOVE_ASSIGN', // 新增
+	抢走: 'KEYWORD_SNATCH', // 新增
 	'好不好?': 'KEYWORD_CONFIRM',
 	不然: 'KEYWORD_ELSE',
 	玩耍: 'KEYWORD_LOOP',
@@ -47,7 +52,6 @@ export const KEYWORDS: Record<string, TokenType> = {
 	想要: 'KEYWORD_DEF',
 	扒: 'KEYWORD_CALL',
 	叼回来: 'KEYWORD_RETURN',
-	高仿: 'KEYWORD_CLONE',
 	好喵: 'BOOLEAN',
 	坏喵: 'BOOLEAN',
 	空碗: 'NULL_LITERAL',
@@ -131,6 +135,20 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 			continue;
 		}
 
+		const remainingCode = sourceCode.substring(cursor);
+		let matchedKeyword = '';
+		for (const keyword of sortedKeywords) {
+			if (remainingCode.startsWith(keyword)) {
+				matchedKeyword = keyword;
+				break;
+			}
+		}
+		if (matchedKeyword) {
+			tokens.push({ type: KEYWORDS[matchedKeyword]!, value: matchedKeyword, line: startLine, col: startCol });
+			advance(matchedKeyword.length);
+			continue;
+		}
+
 		const twoCharSymbol = sourceCode.substring(cursor, cursor + 2);
 		if (['[=', '=]', '[#', '#]', '==', '>=', '<='].includes(twoCharSymbol)) {
 			let type: TokenType = 'OPERATOR';
@@ -146,24 +164,10 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 		if ('+-*/><@~,'.includes(char)) {
 			let type: TokenType = 'OPERATOR';
 			if (char === ',') type = 'COMMA';
-			else if (char === '@') type = 'MATCH';
+			else if (char === '@') type = 'ACCESSOR';
 			else if (char === '~') type = 'TERMINATOR';
 			tokens.push({ type, value: char, line: startLine, col: startCol });
 			advance();
-			continue;
-		}
-
-		const remainingCode = sourceCode.substring(cursor);
-		let matchedKeyword = '';
-		for (const keyword of sortedKeywords) {
-			if (remainingCode.startsWith(keyword)) {
-				matchedKeyword = keyword;
-				break;
-			}
-		}
-		if (matchedKeyword) {
-			tokens.push({ type: KEYWORDS[matchedKeyword]!, value: matchedKeyword, line: startLine, col: startCol });
-			advance(matchedKeyword.length);
 			continue;
 		}
 

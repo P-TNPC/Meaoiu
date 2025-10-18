@@ -8,6 +8,7 @@ import { evaluate } from '../../core/run/interpreter.js';
 import { formatError } from './toolUtils.js';
 
 export async function run(sourceCode: string, builtIns: BuiltInFunctions, filePath: string) {
+	if (!sourceCode.trim()) return console.log('没有字喵！');
 	console.log('=============================');
 	console.log('执行 Meaoiu 代码...');
 	console.log('=============================');
