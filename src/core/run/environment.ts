@@ -1,7 +1,6 @@
 // src/core/run/environment.ts
-
 import type * as AST from '../ast.js';
-import logger from './logger.js';
+import logger from '../run/logger.js'; // 修正了 logger 的引用路径
 
 type VariableValue = any | { isReference: true; scope: Environment; name: string };
 interface Variable {
@@ -13,7 +12,7 @@ let envCounter = 0;
 export class Environment {
 	private id: number;
 	private parent: Environment | undefined;
-	private variables: Map<string, Variable> = new Map();
+	public variables: Map<string, Variable> = new Map(); // 改为 public 供修复代码访问
 	private functions: Map<string, AST.FunctionDeclaration> = new Map();
 
 	constructor(parent?: Environment) {
@@ -59,47 +58,26 @@ export class Environment {
 	}
 
 	public assign(name: string, value: any, kind: AST.AssignmentKind): any {
-		const scope = this.findVariableScope(name);
-		if (!scope) throw new Error(`你想修改的变量「${name}」还不认识喵！请“蹭”一下喵。`);
-		logger.debug(`[ENV #${this.id}] ASSIGN: '${name}'. Found in Env #${scope.id}. (kind: ${kind})`);
+		const targetScope = this.findVariableScope(name);
+		if (!targetScope) throw new Error(`你想修改的变量「${name}」还不认识喵！请先用“蹭”一下喵。`);
 
-		// 如果要修改的目标本身是一个引用，就沿着引用链找到最终的目标去修改
-		const targetVar = scope.variables.get(name)!;
+		logger.debug(`[ENV #${this.id}] ASSIGN: '${name}'. Found in Env #${targetScope.id}. (kind: ${kind})`);
+
+		const targetVar = targetScope.variables.get(name)!;
 		if (targetVar.value?.isReference) {
 			logger.debug(`Assigning through reference: ${name}`);
 			return targetVar.value.scope.assign(targetVar.value.name, value, kind);
 		}
 
-		// 和 declare 类似的逻辑
-		switch (kind) {
-			case 'Reference':
-				if (value?.isVariableReference) {
-					const sourceScope = this.findVariableScope(value.name);
-					if (sourceScope) {
-						scope.variables.set(name, {
-							value: { isReference: true, scope: sourceScope, name: value.name },
-							moved: false,
-						});
-					}
-				} else {
-					const finalValue = this.resolveValue(value);
-					scope.variables.set(name, { value: finalValue, moved: false });
-				}
-				break;
-			case 'Copy':
-				const finalValueCopy = this.resolveValue(value);
-				scope.variables.set(name, { value: finalValueCopy, moved: false });
-				break;
-			case 'Move':
-				const finalValueMove = this.resolveValue(value);
-				if (value?.isVariableReference) {
-					const sourceScope = this.findVariableScope(value.name);
-					if (sourceScope) sourceScope.variables.get(value.name)!.moved = true;
-				}
-				scope.variables.set(name, { value: finalValueMove, moved: false });
-				break;
+		let finalValue = this.resolveValue(value);
+
+		if (value?.isVariableReference && kind === 'Move') {
+			const sourceScope = this.findVariableScope(value.name);
+			if (sourceScope) sourceScope.variables.get(value.name)!.moved = true;
 		}
-		return value;
+
+		targetScope.variables.set(name, { value: finalValue, moved: false });
+		return finalValue;
 	}
 
 	public declareReference(name: string, targetScope: Environment, targetName: string) {
@@ -116,7 +94,6 @@ export class Environment {
 		if (variable.moved) throw new Error(`喵呜！变量「${name}」里的东西已经被拿走了，现在是只空碗！`);
 		logger.debug(`[ENV #${this.id}] LOOKUP: '${name}'. Found in Env #${scope.id}.`);
 
-		// 核心：如果查到的是一个引用，就递归地去引用的地方继续查找
 		if (variable.value?.isReference) {
 			logger.debug(`Following reference from '${name}' to '${variable.value.name}' in Env #${variable.value.scope.id}`);
 			return variable.value.scope.lookup(variable.value.name);
@@ -131,9 +108,7 @@ export class Environment {
 	}
 
 	public resolveValue(value: any): any {
-		if (value && typeof value === 'object' && value.isVariableReference) {
-			return this.lookup(value.name).value;
-		}
+		if (value?.isVariableReference) return this.lookup(value.name).value;
 		return value;
 	}
 
