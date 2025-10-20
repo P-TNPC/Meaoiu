@@ -278,6 +278,140 @@ export class Parser {
 		};
 	}
 
+	private parseIdentifier(): AST.Identifier {
+		// identifier 也应接收可能的 leading 悄悄话
+		this.drainCommentsAhead();
+		const leading = this.takeLeadingComments();
+
+		const t = this.expect('IDENTIFIER', '这里需要一个标识符喵');
+		const node: AST.Identifier = {
+			type: 'Identifier',
+			symbol: t.value,
+			line: t.line,
+			col: t.col,
+			...this.endLoc(t),
+		};
+
+		if (leading.length) {
+			(node as any).leadingComments = leading;
+		}
+		return node;
+	}
+
+	private parseVariableDeclaration(): AST.VariableDeclaration {
+		// 如果这里前面可能有悄悄话（比如参数内部），我们也尽量 attach leading at caller level
+		const sT = this.advance();
+		const i = this.parseIdentifier();
+		const aT = this.advance();
+		let k: AST.AssignmentKind;
+
+		if (aT.type === 'KEYWORD_IS') {
+			// 就是
+			if (this.current().type === 'KEYWORD_CLONE') {
+				// 就是 高仿
+				this.advance();
+				k = 'Copy';
+			} else if (this.current().type === 'KEYWORD_SNATCH') {
+				// 就是 抢走
+				this.advance();
+				k = 'Move';
+			} else {
+				// 就是
+				k = 'Reference';
+			}
+		} else if (aT.type === 'KEYWORD_LIKE') {
+			// 就像
+			k = 'Copy';
+		} else if (aT.type === 'KEYWORD_MOVE_ASSIGN') {
+			// 才是
+			k = 'Move';
+		} else {
+			throw new Error(`[${aT.line}:${aT.col}] 声明变量需要使用 '就是', '就像', 或 '才是' 喵`);
+		}
+
+		const v = this.parseExpression();
+		const eL = this.endLoc();
+		return {
+			type: 'VariableDeclaration',
+			identifier: i,
+			kind: k,
+			value: v,
+			line: sT.line,
+			col: sT.col,
+			...eL,
+		};
+	}
+
+	private parseAssignmentStatement(): AST.AssignmentStatement {
+		const sT = this.current();
+		const a = this.parseIdentifier();
+		const aT = this.advance();
+		let k: AST.AssignmentKind;
+
+		if (aT.type === 'KEYWORD_IS') {
+			// 就是
+			if (this.current().type === 'KEYWORD_CLONE') {
+				// 就是 高仿
+				this.advance();
+				k = 'Copy';
+			} else if (this.current().type === 'KEYWORD_SNATCH') {
+				// 就是 抢走
+				this.advance();
+				k = 'Move';
+			} else {
+				// 就是
+				k = 'Reference';
+			}
+		} else if (aT.type === 'KEYWORD_LIKE') {
+			// 就像
+			k = 'Copy';
+		} else if (aT.type === 'KEYWORD_MOVE_ASSIGN') {
+			// 才是
+			k = 'Move';
+		} else {
+			throw new Error(`[${aT.line}:${aT.col}] 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
+		}
+
+		const v = this.parseExpression();
+		const eL = this.endLoc();
+		return {
+			type: 'AssignmentStatement',
+			assignee: a,
+			value: v,
+			kind: k,
+			line: sT.line,
+			col: sT.col,
+			...eL,
+		};
+	}
+
+	private parseFunctionDeclaration(): AST.FunctionDeclaration {
+		const s = this.advance();
+		this.expect('PARAM_START', '计谋声明需要贡品列表喵');
+		const p: AST.Identifier[] = [];
+
+		if (this.current().type !== 'PARAM_END') {
+			p.push(this.parseIdentifier());
+			while (this.current().type === 'COMMA') {
+				this.advance();
+				p.push(this.parseIdentifier());
+			}
+		}
+
+		this.expect('PARAM_END', '贡品列表需要结束喵');
+		const n = this.parseIdentifier();
+		const b = this.parseBlockStatement();
+		return {
+			type: 'FunctionDeclaration',
+			name: n,
+			params: p,
+			body: b,
+			line: s.line,
+			col: s.col,
+			...this.endLoc(),
+		};
+	}
+
 	private parseStatement(): AST.Statement {
 		// 先把当前位置连续的悄悄话收进 buffer（避免 current() 是 COMMENT 的情况）
 		this.drainCommentsAhead();
@@ -423,125 +557,11 @@ export class Parser {
 		};
 	}
 
-	private parseVariableDeclaration(): AST.VariableDeclaration {
-		// 如果这里前面可能有悄悄话（比如参数内部），我们也尽量 attach leading at caller level
-		const sT = this.advance();
-		const i = this.parseIdentifier();
-		const aT = this.advance();
-		let k: AST.AssignmentKind;
-
-		if (aT.type === 'KEYWORD_IS') {
-			// 就是
-			if (this.current().type === 'KEYWORD_CLONE') {
-				// 就是 高仿
-				this.advance();
-				k = 'Copy';
-			} else if (this.current().type === 'KEYWORD_SNATCH') {
-				// 就是 抢走
-				this.advance();
-				k = 'Move';
-			} else {
-				// 就是
-				k = 'Reference';
-			}
-		} else if (aT.type === 'KEYWORD_LIKE') {
-			// 就像
-			k = 'Copy';
-		} else if (aT.type === 'KEYWORD_MOVE_ASSIGN') {
-			// 才是
-			k = 'Move';
-		} else {
-			throw new Error(`[${aT.line}:${aT.col}] 声明变量需要使用 '就是', '就像', 或 '才是' 喵`);
-		}
-
-		const v = this.parseExpression();
-		const eL = this.endLoc();
-		return {
-			type: 'VariableDeclaration',
-			identifier: i,
-			kind: k,
-			value: v,
-			line: sT.line,
-			col: sT.col,
-			...eL,
-		};
-	}
-
-	private parseAssignmentStatement(): AST.AssignmentStatement {
-		const sT = this.current();
-		const a = this.parseIdentifier();
-		const aT = this.advance();
-		let k: AST.AssignmentKind;
-
-		if (aT.type === 'KEYWORD_IS') {
-			// 就是
-			if (this.current().type === 'KEYWORD_CLONE') {
-				// 就是 高仿
-				this.advance();
-				k = 'Copy';
-			} else if (this.current().type === 'KEYWORD_SNATCH') {
-				// 就是 抢走
-				this.advance();
-				k = 'Move';
-			} else {
-				// 就是
-				k = 'Reference';
-			}
-		} else if (aT.type === 'KEYWORD_LIKE') {
-			// 就像
-			k = 'Copy';
-		} else if (aT.type === 'KEYWORD_MOVE_ASSIGN') {
-			// 才是
-			k = 'Move';
-		} else {
-			throw new Error(`[${aT.line}:${aT.col}] 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
-		}
-
-		const v = this.parseExpression();
-		const eL = this.endLoc();
-		return {
-			type: 'AssignmentStatement',
-			assignee: a,
-			value: v,
-			kind: k,
-			line: sT.line,
-			col: sT.col,
-			...eL,
-		};
-	}
-
 	private parseLoopStatement(): AST.LoopStatement {
 		const s = this.advance();
 		const b = this.parseBlockStatement();
 		return {
 			type: 'LoopStatement',
-			body: b,
-			line: s.line,
-			col: s.col,
-			...this.endLoc(),
-		};
-	}
-
-	private parseFunctionDeclaration(): AST.FunctionDeclaration {
-		const s = this.advance();
-		this.expect('PARAM_START', '计谋声明需要贡品列表喵');
-		const p: AST.Identifier[] = [];
-
-		if (this.current().type !== 'PARAM_END') {
-			p.push(this.parseIdentifier());
-			while (this.current().type === 'COMMA') {
-				this.advance();
-				p.push(this.parseIdentifier());
-			}
-		}
-
-		this.expect('PARAM_END', '贡品列表需要结束喵');
-		const n = this.parseIdentifier();
-		const b = this.parseBlockStatement();
-		return {
-			type: 'FunctionDeclaration',
-			name: n,
-			params: p,
 			body: b,
 			line: s.line,
 			col: s.col,
@@ -899,26 +919,6 @@ export class Parser {
 			(node as any).leadingComments.push(...leading);
 		}
 
-		return node;
-	}
-
-	private parseIdentifier(): AST.Identifier {
-		// identifier 也应接收可能的 leading 悄悄话
-		this.drainCommentsAhead();
-		const leading = this.takeLeadingComments();
-
-		const t = this.expect('IDENTIFIER', '这里需要一个标识符喵');
-		const node: AST.Identifier = {
-			type: 'Identifier',
-			symbol: t.value,
-			line: t.line,
-			col: t.col,
-			...this.endLoc(t),
-		};
-
-		if (leading.length) {
-			(node as any).leadingComments = leading;
-		}
 		return node;
 	}
 }

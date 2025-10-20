@@ -2,11 +2,12 @@
 import type * as AST from '../ast.js';
 import logger from '../run/logger.js'; // 修正了 logger 的引用路径
 
-type VariableValue = any | { isReference: true; scope: Environment; name: string };
+type VariableValue = { isReference: true; scope: Environment; name: string };
 interface Variable {
 	value: VariableValue;
 	moved: boolean;
 }
+type VariableReference = { isVariableReference: true; name: string; value: VariableValue };
 
 let envCounter = 0;
 export class Environment {
@@ -23,7 +24,7 @@ export class Environment {
 
 	public declare(name: string, value: any, kind: AST.AssignmentKind): any {
 		if (this.variables.has(name)) throw new Error(`变量 '${name}' 已经被“蹭”过一次了喵！`);
-		logger.debug(`[ENV #${this.id}] DECLARE: '${name}' (kind: ${kind})`);
+		logger.debug(`[ENV #${this.id}] DECLARE: '${name}' (kind: ${kind}) VALUE:`, value);
 
 		switch (kind) {
 			case 'Reference':
@@ -61,7 +62,7 @@ export class Environment {
 		const targetScope = this.findVariableScope(name);
 		if (!targetScope) throw new Error(`你想修改的变量「${name}」还不认识喵！请先用“蹭”一下喵。`);
 
-		logger.debug(`[ENV #${this.id}] ASSIGN: '${name}'. Found in Env #${targetScope.id}. (kind: ${kind})`);
+		logger.debug(`[ENV #${this.id}] ASSIGN: '${name}'. Found in Env #${targetScope.id}. (kind: ${kind}) VALUE:`, value);
 
 		const targetVar = targetScope.variables.get(name)!;
 		if (targetVar.value?.isReference) {
@@ -87,7 +88,7 @@ export class Environment {
 		});
 	}
 
-	public lookup(name: string): any {
+	public lookup(name: string): VariableReference {
 		const scope = this.findVariableScope(name);
 		if (!scope) throw new Error(`咦？没找到叫做「${name}」的玩具，是不是被你藏起来了？`);
 		const variable = scope.variables.get(name)!;

@@ -135,7 +135,7 @@ export async function evaluate(node: AST.AstNode, env: Environment, builtIns: Bu
 			}
 			case 'VariableDeclaration': {
 				const varDec = node as AST.VariableDeclaration;
-				let value = (await evaluate(varDec.value, env, builtIns));
+				let value = await evaluate(varDec.value, env, builtIns);
 				if (value instanceof ReturnValue) value = value.value;
 				return env.declare(varDec.identifier.symbol, value, varDec.kind);
 			}
@@ -219,10 +219,7 @@ export async function evaluate(node: AST.AstNode, env: Environment, builtIns: Bu
 				return await evaluate((node as AST.ExpressionStatement).expression, env, builtIns);
 		}
 	} catch (err: any) {
-		if (err.message.startsWith('[')) {
-			// 如果错误已经有位置信息，直接抛出
-			throw err;
-		}
+		if (err.message.startsWith('[')) throw err; // 如果错误已经有位置信息，直接抛出
 		// 否则，附加上当前 AST 节点的位置信息再抛出
 		throw new Error(`[${node.line}:${node.col}] 运行时错误喵: ${err.message}`);
 	}

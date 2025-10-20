@@ -1,8 +1,6 @@
 // src/core/ast.ts
-import type { Token } from './tokenizer.js';
 
-// --- 新增：定义所有权行为的类型 ---
-export type AssignmentKind = 'Reference' | 'Move' | 'Copy';
+import type { Token } from './tokenizer.js';
 
 export interface AstNode {
 	type: string;
@@ -21,6 +19,7 @@ export interface Program extends AstNode {
 	type: 'Program';
 	body: Statement[];
 }
+
 export type Statement =
 	| VariableDeclaration
 	| FunctionDeclaration
@@ -49,6 +48,7 @@ export type Expression =
 	| LoopStatement
 	| ErrorNode;
 
+export type AssignmentKind = 'Reference' | 'Move' | 'Copy';
 export type LogicalOperator = 'AND' | 'OR' | 'NAND' | 'NOR';
 
 export interface LogicalExpression extends AstNode {
@@ -68,12 +68,12 @@ export interface AssignmentStatement extends AstNode {
 	type: 'AssignmentStatement';
 	assignee: Identifier;
 	value: Expression;
-	kind: AssignmentKind; // <-- 修改
+	kind: AssignmentKind;
 }
 
 export interface VariableDeclaration extends AstNode {
 	type: 'VariableDeclaration';
-	kind: AssignmentKind; // <-- 修改
+	kind: AssignmentKind;
 	identifier: Identifier;
 	value: Expression;
 }
