@@ -127,12 +127,20 @@ class SymbolAnalyzer {
 	}
 
 	private visitVariableDeclaration(node: AST.VariableDeclaration) {
-		const inferredType = this.inferExpressionType(node.value);
-		this.declare(node.identifier.symbol, 'variable', inferredType, node.identifier);
-		this.visit(node.value);
-		if (node.kind === 'Move' && node.value.type === 'Identifier') {
-			this.markAsMoved((node.value as AST.Identifier).symbol);
+		let inferredType = typeMap.null; // 默认是空碗
+		// 如果有初始化部分，就从初始化表达式中推断类型
+		if (node.initialization) {
+			inferredType = this.inferExpressionType(node.initialization.value);
+			this.visit(node.initialization.value); // 继续遍历子节点
+
+			// 处理所有权转移
+			if (node.initialization.kind === 'Move' && node.initialization.value.type === 'Identifier') {
+				this.markAsMoved((node.initialization.value as AST.Identifier).symbol);
+			}
 		}
+
+		// 声明符号
+		this.declare(node.identifier.symbol, 'variable', inferredType, node.identifier);
 	}
 
 	private visitAssignmentStatement(node: AST.AssignmentStatement) {

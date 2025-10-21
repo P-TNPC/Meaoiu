@@ -299,43 +299,25 @@ export class Parser {
 	}
 
 	private parseVariableDeclaration(): AST.VariableDeclaration {
-		// 如果这里前面可能有悄悄话（比如参数内部），我们也尽量 attach leading at caller level
 		const sT = this.advance();
-		const i = this.parseIdentifier();
-		const aT = this.advance();
-		let k: AST.AssignmentKind;
+		const identifier = this.parseIdentifier();
+		let initialization: AST.VariableDeclaration['initialization'];
 
-		if (aT.type === 'KEYWORD_IS') {
-			// 就是
-			if (this.current().type === 'KEYWORD_CLONE') {
-				// 就是 高仿
-				this.advance();
-				k = 'Copy';
-			} else if (this.current().type === 'KEYWORD_SNATCH') {
-				// 就是 抢走
-				this.advance();
-				k = 'Move';
-			} else {
-				// 就是
-				k = 'Reference';
-			}
-		} else if (aT.type === 'KEYWORD_LIKE') {
-			// 就像
-			k = 'Copy';
-		} else if (aT.type === 'KEYWORD_MOVE_ASSIGN') {
-			// 才是
-			k = 'Move';
-		} else {
-			throw new Error(`[${aT.line}:${aT.col}] 声明变量需要使用 '就是', '就像', 或 '才是' 喵`);
+		// 检查后面是否紧跟赋值关键字
+		if (
+			this.current().type === 'KEYWORD_IS' ||
+			this.current().type === 'KEYWORD_LIKE' ||
+			this.current().type === 'KEYWORD_MOVE_ASSIGN'
+		) {
+			this.position--;
+			initialization = this.parseAssignmentStatement();
 		}
 
-		const v = this.parseExpression();
 		const eL = this.endLoc();
 		return {
 			type: 'VariableDeclaration',
-			identifier: i,
-			kind: k,
-			value: v,
+			identifier,
+			initialization,
 			line: sT.line,
 			col: sT.col,
 			...eL,

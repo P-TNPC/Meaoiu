@@ -75,8 +75,18 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 
 		case 'VariableDeclaration': {
 			const n = node as AST.VariableDeclaration;
-			const k = n.kind === 'Move' ? '就是' : '就像';
-			content = `${indent(options)}蹭 ${printIdentifier(n.identifier)} ${k} ${printNodeContent(n.value, options)}`;
+			// 检查是否有初始化部分
+			if (n.initialization) {
+				const assignContent = printNodeContent(n.initialization, options).trim();
+				// 替换掉 AssignmentStatement 开头的变量名，换成 '蹭 变量'
+				content = assignContent.replace(
+					printIdentifier(n.initialization.assignee),
+					`蹭 ${printIdentifier(n.identifier)}`
+				);
+				content = `${indent(options)}${content}`;
+			} else {
+				content = `${indent(options)}蹭 ${printIdentifier(n.identifier)}`;
+			}
 			break;
 		}
 		case 'AssignmentStatement': {

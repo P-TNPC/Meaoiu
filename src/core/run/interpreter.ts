@@ -135,9 +135,10 @@ export async function evaluate(node: AST.AstNode, env: Environment, builtIns: Bu
 			}
 			case 'VariableDeclaration': {
 				const varDec = node as AST.VariableDeclaration;
-				let value = await evaluate(varDec.value, env, builtIns);
-				if (value instanceof ReturnValue) value = value.value;
-				return env.declare(varDec.identifier.symbol, value, varDec.kind);
+				env.declare(varDec.identifier.symbol); // 声明变量名
+				// 若有初始化部分，则执行以赋值
+				if (varDec.initialization) return await evaluate(varDec.initialization, env, builtIns);
+				return null;
 			}
 			case 'AssignmentStatement': {
 				const assignStmt = node as AST.AssignmentStatement;
@@ -192,7 +193,8 @@ export async function evaluate(node: AST.AstNode, env: Environment, builtIns: Bu
 					if (argument.isClone || argument.expression.type !== 'Identifier') {
 						// 如果是“高仿”
 						const argValue = await evaluate(argument.expression, env, builtIns);
-						functionEnv.declare(paramName, argValue, 'Copy');
+						functionEnv.declare(paramName);
+						functionEnv.assign(paramName, argValue, 'Copy');
 					} else {
 						// 默认是引用
 						const varName = (argument.expression as AST.Identifier).symbol;

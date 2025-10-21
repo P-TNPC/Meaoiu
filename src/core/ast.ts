@@ -64,17 +64,16 @@ export interface SequenceExpression extends AstNode {
 	operators: Token[];
 }
 
+export interface VariableDeclaration extends AstNode {
+	type: 'VariableDeclaration';
+	identifier: Identifier;
+	initialization?: AssignmentStatement | undefined;
+}
+
 export interface AssignmentStatement extends AstNode {
 	type: 'AssignmentStatement';
 	assignee: Identifier;
-	value: Expression;
 	kind: AssignmentKind;
-}
-
-export interface VariableDeclaration extends AstNode {
-	type: 'VariableDeclaration';
-	kind: AssignmentKind;
-	identifier: Identifier;
 	value: Expression;
 }
 
