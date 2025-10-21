@@ -142,9 +142,22 @@ export async function evaluate(node: AST.AstNode, env: Environment, builtIns: Bu
 			}
 			case 'AssignmentStatement': {
 				const assignStmt = node as AST.AssignmentStatement;
+
+				// 对左侧表达式求值，期望得到一个“位置”
+				const target = await evaluate(assignStmt.assignee, env, builtIns);
+
+				// 安全检查：如果左侧不是一个有效的“位置”（引用），就哈气！
+				if (!target?.isVariableReference) {
+					throw new Error(`[${node.line}:${node.col}] 运行时错误喵: 赋值的左边必须是一个变量，或者能返回“位置”的计谋喵！`);
+				}
+
+				// 对右侧表达式求值，得到要赋的值
 				let value = await evaluate(assignStmt.value, env, builtIns);
 				if (value instanceof ReturnValue) value = value.value;
-				return env.assign(assignStmt.assignee.symbol, value, assignStmt.kind);
+
+				// 调用环境的 assign 方法，完成赋值
+				// 从 target 中取出变量名，assign 方法会处理剩下的事情
+				return env.assign(target.name, value, assignStmt.kind);
 			}
 			case 'IfStatement': {
 				const isTrue = env.resolveValue(await evaluate((node as AST.IfStatement).test, env, builtIns));
@@ -214,8 +227,41 @@ export async function evaluate(node: AST.AstNode, env: Environment, builtIns: Bu
 			}
 			case 'ReturnStatement': {
 				const returnStmt = node as AST.ReturnStatement;
-				const value = returnStmt.argument ? await evaluate(returnStmt.argument, env, builtIns) : null;
-				return new ReturnValue(env.resolveValue(value));
+				if (!returnStmt.argument) return new ReturnValue(null); // 叼回来~ -> 返回空碗
+
+				const value = await evaluate(returnStmt.argument, env, builtIns);
+				const isIdentifier = returnStmt.argument.type === 'Identifier';
+				const varName = isIdentifier ? (returnStmt.argument as AST.Identifier).symbol : '';
+
+				switch (returnStmt.kind) {
+					case 'Copy':
+						// 高仿: 强制返回值，绝不返回引用
+						return new ReturnValue(env.resolveValue(value));
+
+					case 'Move':
+						// 抢走: 返回值，并标记源变量为已移动
+						if (!isIdentifier) {
+							throw new Error(
+								`[${node.line}:${node.col}] 运行时错误喵: 只能“抢走”一个变量，不能抢走一个表达式结果喵！`
+							);
+						}
+						const movedValue = env.resolveValue(value);
+						const sourceScope = env.findVariableScope(varName);
+						if (sourceScope) sourceScope.variables.get(varName)!.moved = true;
+						return new ReturnValue(movedValue);
+
+					case 'Reference':
+					default:
+						if (!isIdentifier) return new ReturnValue(env.resolveValue(value)); // 对于表达式，总是返回值
+						// 尝试返回引用（带安全检查）
+						const variableScope = env.findVariableScope(varName);
+						if (variableScope === env) {
+							throw new Error(
+								`[${node.line}:${node.col}] 运行时错误喵: 不能把计谋里的临时玩具「${varName}」叼出去喵，它离开这里就消失了！`
+							);
+						}
+						return new ReturnValue(value); // 返回引用
+				}
 			}
 			case 'ExpressionStatement':
 				return await evaluate((node as AST.ExpressionStatement).expression, env, builtIns);

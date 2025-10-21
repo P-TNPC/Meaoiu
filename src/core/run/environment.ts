@@ -36,59 +36,63 @@ export class Environment {
 	 * 为已存在的变量赋值。
 	 */
 	public assign(name: string, value: any, kind: AST.AssignmentKind): any {
-		const targetScope = this.findVariableScope(name);
-		if (!targetScope) {
-			throw new Error(`你想修改的变量「${name}」还不认识喵！请先用“蹭”一下喵。`);
+		const executionScope = this; // `this` is the scope where the assignment happens.
+
+		// 立即在当前执行作用域解析源头最终值
+		const finalValue = executionScope.resolveValue(value);
+
+		// 如果赋值操作是 'Move'，需要标记源变量为 "已移动"
+		if (value?.isVariableReference && kind === 'Move') {
+			const sourceScope = executionScope.findVariableScope(value.name);
+			if (sourceScope) {
+				const sourceVar = sourceScope.variables.get(value.name);
+				if (sourceVar) sourceVar.moved = true;
+			}
 		}
 
-		logger.debug(`[ENV #${this.id}] ASSIGN: '${name}'. Found in Env #${targetScope.id}. (kind: ${kind}) VALUE:`, value);
+		// 查找并追踪目标的最终存放位置
+		const initialTargetScope = executionScope.findVariableScope(name);
+		if (!initialTargetScope) throw new Error(`你想修改的变量「${name}」还不认识喵！请先用“蹭”一下喵。`);
 
-		const targetVar = targetScope.variables.get(name)!;
+		let finalTargetScope = initialTargetScope;
+		let finalTargetName = name;
+		let targetVar = finalTargetScope.variables.get(finalTargetName)!;
 
-		// 如果目标本身是个引用，就递归地对引用的源头进行赋值
-		if (targetVar.value?.isReference) {
-			logger.debug(`Assigning through reference: ${name}`);
-			return targetVar.value.scope.assign(targetVar.value.name, value, kind);
+		// 顺着引用链一直往下找，找到真正的“碗”
+		while (targetVar.value?.isReference) {
+			finalTargetScope = targetVar.value.scope;
+			finalTargetName = targetVar.value.name;
+			targetVar = finalTargetScope.variables.get(finalTargetName)!;
+			logger.debug(`跟随引用到 '${finalTargetName}' (在环境 #${finalTargetScope.id})`);
 		}
 
-		// --- 核心赋值逻辑，集中于此 ---
-		switch (kind) {
-			case 'Reference':
-				// 只有当值确实是一个变量时，才能创建引用
-				if (value?.isVariableReference) {
-					const sourceScope = this.findVariableScope(value.name);
-					if (sourceScope) {
-						targetScope.variables.set(name, {
-							value: { isReference: true, scope: sourceScope, name: value.name },
-							moved: false,
-						});
-					}
-				} else {
-					// 如果值是 123, 'abc' 这样的字面量，无法创建引用，按 Move 处理
-					targetScope.variables.set(name, { value: this.resolveValue(value), moved: false });
-				}
-				break;
-			case 'Copy':
-				const finalValueCopy = this.resolveValue(value);
-				targetScope.variables.set(name, { value: finalValueCopy, moved: false });
-				break;
-			case 'Move':
-				const finalValueMove = this.resolveValue(value);
-				// 如果值来自另一个变量，标记源变量为“已移动”
-				if (value?.isVariableReference) {
-					const sourceScope = this.findVariableScope(value.name);
-					if (sourceScope) sourceScope.variables.get(value.name)!.moved = true;
-				}
-				targetScope.variables.set(name, { value: finalValueMove, moved: false });
-				break;
+		// 在最终位置赋值
+		logger.debug(
+			`[ENV #${executionScope.id}] ASSIGN: '${finalTargetName}' in Env #${finalTargetScope.id}. (kind: ${kind}) VALUE:`,
+			finalValue
+		);
+		if (kind === 'Reference') {
+			if (value?.isVariableReference) {
+				const sourceScope = executionScope.findVariableScope(value.name);
+				if (!sourceScope) throw new Error(`找不到可以引用的玩具「${value.name}」喵！`);
+				finalTargetScope.variables.set(finalTargetName, {
+					value: { isReference: true, scope: sourceScope, name: value.name },
+					moved: false,
+				});
+			} else {
+				// 无法引用，视作 'Copy'
+				finalTargetScope.variables.set(finalTargetName, { value: finalValue, moved: false });
+			}
+		} else {
+			// 对于 'Copy' 和 'Move'，直接赋予已经解析好的值
+			finalTargetScope.variables.set(finalTargetName, { value: finalValue, moved: false });
 		}
-		return value;
+
+		return finalValue;
 	}
 
 	public declareReference(name: string, targetScope: Environment, targetName: string) {
-		if (this.variables.has(name)) {
-			throw new Error(`变量 '${name}' 已经被“蹭”过一次了喵！`);
-		}
+		if (this.variables.has(name)) throw new Error(`变量 '${name}' 已经被“蹭”过一次了喵！`);
 		this.variables.set(name, {
 			value: { isReference: true, scope: targetScope, name: targetName },
 			moved: false,

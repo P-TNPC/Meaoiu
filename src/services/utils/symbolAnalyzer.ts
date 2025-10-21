@@ -144,7 +144,7 @@ class SymbolAnalyzer {
 	}
 
 	private visitAssignmentStatement(node: AST.AssignmentStatement) {
-		this.visit(node.assignee);
+		this.visit(node.assignee); // 现在 assignee 是一个表达式，直接 visit 即可
 		this.visit(node.value);
 		if (node.kind === 'Move' && node.value.type === 'Identifier') {
 			this.markAsMoved((node.value as AST.Identifier).symbol);

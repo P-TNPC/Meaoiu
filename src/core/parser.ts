@@ -309,8 +309,7 @@ export class Parser {
 			this.current().type === 'KEYWORD_LIKE' ||
 			this.current().type === 'KEYWORD_MOVE_ASSIGN'
 		) {
-			this.position--;
-			initialization = this.parseAssignmentStatement();
+			initialization = this.parseAssignmentStatement(identifier);
 		}
 
 		const eL = this.endLoc();
@@ -318,49 +317,6 @@ export class Parser {
 			type: 'VariableDeclaration',
 			identifier,
 			initialization,
-			line: sT.line,
-			col: sT.col,
-			...eL,
-		};
-	}
-
-	private parseAssignmentStatement(): AST.AssignmentStatement {
-		const sT = this.current();
-		const a = this.parseIdentifier();
-		const aT = this.advance();
-		let k: AST.AssignmentKind;
-
-		if (aT.type === 'KEYWORD_IS') {
-			// 就是
-			if (this.current().type === 'KEYWORD_CLONE') {
-				// 就是 高仿
-				this.advance();
-				k = 'Copy';
-			} else if (this.current().type === 'KEYWORD_SNATCH') {
-				// 就是 抢走
-				this.advance();
-				k = 'Move';
-			} else {
-				// 就是
-				k = 'Reference';
-			}
-		} else if (aT.type === 'KEYWORD_LIKE') {
-			// 就像
-			k = 'Copy';
-		} else if (aT.type === 'KEYWORD_MOVE_ASSIGN') {
-			// 才是
-			k = 'Move';
-		} else {
-			throw new Error(`[${aT.line}:${aT.col}] 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
-		}
-
-		const v = this.parseExpression();
-		const eL = this.endLoc();
-		return {
-			type: 'AssignmentStatement',
-			assignee: a,
-			value: v,
-			kind: k,
 			line: sT.line,
 			col: sT.col,
 			...eL,
@@ -407,8 +363,11 @@ export class Parser {
 				case 'KEYWORD_USE':
 					s = this.parseVariableDeclaration();
 					break;
-				case 'KEYWORD_LOOP':
-					s = this.parseLoopStatement();
+				case 'KEYWORD_DEF':
+					s = this.parseFunctionDeclaration();
+					break;
+				case 'KEYWORD_RETURN':
+					s = this.parseReturnStatement();
 					break;
 				case 'KEYWORD_BREAK':
 					this.advance();
@@ -419,37 +378,20 @@ export class Parser {
 						...this.endLoc(sT),
 					};
 					break;
-				case 'KEYWORD_DEF':
-					s = this.parseFunctionDeclaration();
-					break;
-				case 'KEYWORD_CALL':
-					s = this.parseCallExpression();
-					break;
-				case 'KEYWORD_RETURN':
-					s = this.parseReturnStatement();
-					break;
-				case 'BLOCK_START':
-					s = this.parseBlockOrIfStatement();
-					break;
-				case 'IDENTIFIER':
-					if (
-						this.peek().type === 'KEYWORD_IS' ||
-						this.peek().type === 'KEYWORD_LIKE' ||
-						this.peek().type === 'KEYWORD_MOVE_ASSIGN'
-					) {
-						s = this.parseAssignmentStatement();
-					} else {
-						// 如果标识符后面不是赋值，那么它可能是一个表达式语句的开始
-						const expr = this.parseExpression();
-						s = { type: 'ExpressionStatement', expression: expr, line: expr.line, col: expr.col, ...this.endLoc() };
-					}
-					break;
 				case 'BLOCK_END':
 					throw new Error(`[${sT.line}:${sT.col}] 假的语句喵!`);
 				default:
-					// 如果不是任何已知的语句关键字，也尝试将其作为表达式语句解析
 					const expr = this.parseExpression();
-					s = { type: 'ExpressionStatement', expression: expr, line: expr.line, col: expr.col, ...this.endLoc() };
+
+					if (
+						this.current().type === 'KEYWORD_IS' ||
+						this.current().type === 'KEYWORD_LIKE' ||
+						this.current().type === 'KEYWORD_MOVE_ASSIGN'
+					) {
+						s = this.parseAssignmentStatement(expr); // 将解析好的表达式作为“被赋值者”传入
+					} else {
+						s = { type: 'ExpressionStatement', expression: expr, line: expr.line, col: expr.col, ...this.endLoc() };
+					}
 			}
 			// 统一通过 expect 检查终结符：在 tolerant 模式下 expect 不会抛
 			const termTok = this.expect('TERMINATOR', "每个语句的最后都需要一个 '~' 结尾喵!");
@@ -471,6 +413,47 @@ export class Parser {
 				throw e;
 			}
 		}
+	}
+
+	private parseAssignmentStatement(assignee: AST.Expression): AST.AssignmentStatement {
+		const aT = this.advance();
+		let k: AST.AssignmentKind;
+
+		if (aT.type === 'KEYWORD_IS') {
+			// 就是
+			if (this.current().type === 'KEYWORD_CLONE') {
+				// 就是 高仿
+				this.advance();
+				k = 'Copy';
+			} else if (this.current().type === 'KEYWORD_SNATCH') {
+				// 就是 抢走
+				this.advance();
+				k = 'Move';
+			} else {
+				// 就是
+				k = 'Reference';
+			}
+		} else if (aT.type === 'KEYWORD_LIKE') {
+			// 就像
+			k = 'Copy';
+		} else if (aT.type === 'KEYWORD_MOVE_ASSIGN') {
+			// 才是
+			k = 'Move';
+		} else {
+			throw new Error(`[${aT.line}:${aT.col}] 语法错误喵: 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
+		}
+
+		const v = this.parseExpression();
+		const eL = this.endLoc();
+		return {
+			type: 'AssignmentStatement',
+			assignee,
+			value: v,
+			kind: k,
+			line: assignee.line,
+			col: assignee.col,
+			...eL,
+		};
 	}
 
 	private parseBlockOrIfStatement(): AST.Statement {
@@ -554,14 +537,23 @@ export class Parser {
 	private parseReturnStatement(): AST.ReturnStatement {
 		const s = this.advance();
 		let a: AST.Expression | undefined;
+		let k: AST.ReturnKind = 'Reference'; // 默认是引用返回
 
-		if (this.current().type !== 'TERMINATOR') {
-			a = this.parseExpression();
+		// 检查是否有返回关键字
+		if (this.current().type === 'KEYWORD_CLONE') {
+			this.advance();
+			k = 'Copy';
+		} else if (this.current().type === 'KEYWORD_SNATCH') {
+			this.advance();
+			k = 'Move';
 		}
+
+		if (this.current().type !== 'TERMINATOR') a = this.parseExpression();
 
 		return {
 			type: 'ReturnStatement',
 			argument: a,
+			kind: k,
 			line: s.line,
 			col: s.col,
 			...this.endLoc(),

@@ -80,7 +80,7 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 				const assignContent = printNodeContent(n.initialization, options).trim();
 				// 替换掉 AssignmentStatement 开头的变量名，换成 '蹭 变量'
 				content = assignContent.replace(
-					printIdentifier(n.initialization.assignee),
+					printIdentifier(n.initialization.assignee as AST.Identifier),
 					`蹭 ${printIdentifier(n.identifier)}`
 				);
 				content = `${indent(options)}${content}`;
@@ -91,8 +91,9 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 		}
 		case 'AssignmentStatement': {
 			const n = node as AST.AssignmentStatement;
-			const k = n.kind === 'Move' ? '就是' : '就像';
-			content = `${indent(options)}${printIdentifier(n.assignee)} ${k} ${printNodeContent(n.value, options)}`;
+			const k = n.kind === 'Move' ? '才是' : (n.kind === 'Copy' ? '就像' : '就是');
+			// 现在 assignee 是一个表达式，用 printNodeContent 来格式化
+			content = `${indent(options)}${printNodeContent(n.assignee, options)} ${k} ${printNodeContent(n.value, options)}`;
 			break;
 		}
 		case 'CallExpression': {
@@ -125,8 +126,12 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 			break;
 		}
 		case 'ReturnStatement': {
-			const a = (node as AST.ReturnStatement).argument;
-			content = `${indent(options)}叼回来${a ? ` ${printNodeContent(a, options)}` : ''}`;
+			const n = node as AST.ReturnStatement;
+			const a = n.argument;
+			let keyword = '';
+			if (n.kind === 'Copy') keyword = '高仿 ';
+			if (n.kind === 'Move') keyword = '抢走 ';
+			content = `${indent(options)}叼回来 ${keyword}${a ? printNodeContent(a, options) : ''}`;
 			break;
 		}
 		case 'BreakStatement': {

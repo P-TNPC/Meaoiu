@@ -49,6 +49,7 @@ export type Expression =
 	| ErrorNode;
 
 export type AssignmentKind = 'Reference' | 'Move' | 'Copy';
+export type ReturnKind = AssignmentKind;
 export type LogicalOperator = 'AND' | 'OR' | 'NAND' | 'NOR';
 
 export interface LogicalExpression extends AstNode {
@@ -72,7 +73,7 @@ export interface VariableDeclaration extends AstNode {
 
 export interface AssignmentStatement extends AstNode {
 	type: 'AssignmentStatement';
-	assignee: Identifier;
+	assignee: Expression;
 	kind: AssignmentKind;
 	value: Expression;
 }
@@ -146,6 +147,7 @@ export interface CallExpression extends AstNode {
 export interface ReturnStatement extends AstNode {
 	type: 'ReturnStatement';
 	argument?: Expression | undefined;
+	kind: ReturnKind;
 }
 
 export interface Argument extends AstNode {
