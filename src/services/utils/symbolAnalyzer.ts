@@ -33,95 +33,133 @@ class SymbolAnalyzer {
 				return typeMap.null;
 			case 'Identifier':
 				return this.lookup(node.symbol)?.type ?? typeMap.unknown;
-			case 'CallExpression':
+			case 'CallExpression': {
 				const func = this.lookup(node.callee.symbol);
 				if (func?.kind === 'function') return typeMap.unknown;
 				return typeMap.unknown;
-			case 'BinaryExpression':
-				const op = (node as AST.BinaryExpression).operator;
+			}
+			case 'BinaryExpression': {
+				const op = node.operator;
 				if (['>', '<', '>=', '<=', '=='].includes(op)) return typeMap.boolean;
 				if (['+', '-', '*', '/'].includes(op)) return typeMap.number;
 				return typeMap.unknown;
+			}
 			case 'LogicalExpression':
 				return typeMap.boolean;
 			case 'SequenceExpression':
 				return typeMap.number;
+			case 'BlockStatement':
+				return node.isCollection ? typeMap.collection : typeMap.unknown;
+			case 'MemberAccessExpression':
+				// @ 访问符，目前无法静态知道它会返回什么
+				return typeMap.unknown;
+			case 'UnaryExpression':
+				// 高仿/抢走，类型与它操作的参数一致
+				return this.inferExpressionType(node.argument);
 			default:
 				return typeMap.unknown;
 		}
 	}
 
-	public visit(node: AST.AstNode | undefined) {
+	public visit(node: AST.Node | undefined) {
 		if (!node) return;
 		this.nodeScopeMap.set(node, this.currentScope);
 		switch (node.type) {
 			case 'Program':
-			case 'BlockStatement':
-				this.enterScope(); // 进入块时，创建新作用域
-				(node as AST.BlockStatement).body.forEach(n => this.visit(n));
-				this.leaveScope(); // 离开块时，返回父作用域
+			case 'BlockStatement': {
+				this.enterScope();
+				node.body.forEach(n => this.visit(n));
+				this.leaveScope();
 				break;
+			}
 			case 'IfStatement': {
-				const n = node as AST.IfStatement;
-				this.visit(n.test);
-				this.visit(n.consequent);
-				this.visit(n.alternate);
+				this.visit(node.test);
+				this.visit(node.consequent);
+				this.visit(node.alternate);
 				break;
 			}
 			case 'LoopStatement':
-				this.visit((node as AST.LoopStatement).body);
+				this.visit(node.body);
 				break;
 			case 'ReturnStatement':
-				this.visit((node as AST.ReturnStatement).argument);
+				this.visit(node.argument);
 				break;
 			case 'FunctionDeclaration':
-				this.visitFunctionDeclaration(node as AST.FunctionDeclaration);
+				this.visitFunctionDeclaration(node);
 				break;
 			case 'VariableDeclaration':
-				this.visitVariableDeclaration(node as AST.VariableDeclaration);
+				this.visitVariableDeclaration(node);
 				break;
 			case 'AssignmentStatement':
-				this.visitAssignmentStatement(node as AST.AssignmentStatement);
+				this.visitAssignmentStatement(node);
 				break;
 			case 'ExpressionStatement':
-				this.visit((node as AST.ExpressionStatement).expression);
+				this.visit(node.expression);
 				break;
-			case 'CallExpression': {
-				const n = node as AST.CallExpression;
-				n.args.forEach(arg => this.visit(arg.expression));
-				this.visit(n.callee);
+			case 'CallExpression':
+				this.visit(node.args);
+				this.visit(node.callee);
 				break;
-			}
+			case 'MemberAccessExpression':
+				this.visit(node.object);
+				this.visit(node.property);
+				break;
+			case 'UnaryExpression':
+				this.visit(node.argument);
+				break;
 			case 'LogicalExpression':
 			case 'BinaryExpression':
-				this.visitBinaryExpression(node as AST.BinaryExpression);
+				this.visitBinaryExpression(node);
 				break;
 			case 'SequenceExpression':
-				(node as AST.SequenceExpression).sections.forEach(s => this.visit(s));
+				node.sections.forEach(s => this.visit(s));
 				break;
 			case 'Identifier':
-				this.visitIdentifier(node as AST.Identifier);
+				this.visitIdentifier(node);
 				break;
 			case 'ErrorNode':
-				break;
 			case 'NumericLiteral':
 			case 'StringLiteral':
 			case 'BooleanLiteral':
 			case 'NullLiteral':
 			case 'BreakStatement':
-			case 'Argument':
 				break;
-			default:
-				console.warn(`[SymbolAnalyzer] Unhandled node type: ${node.type}`);
+			// default: // 此处已推断为不可达
+			// 	console.warn(`[SymbolAnalyzer] Unhandled node type: ${node.type}`);
 		}
 	}
 
 	private visitFunctionDeclaration(node: AST.FunctionDeclaration) {
-		// 为计谋本身声明类型：'计谋'
 		this.declare(node.name.symbol, 'function', typeMap.function, node.name);
 		this.enterScope();
-		// 为所有贡品声明初始类型：'不懂'
-		node.params.forEach(p => this.declare(p.symbol, 'parameter', typeMap.unknown, p));
+
+		for (const paramStmt of node.params.body) {
+			if (paramStmt.type === 'VariableDeclaration') {
+				// 情况 1: [= a 就是 1 =] 或 [= 蹭 a =]
+				// 这种语句本身就包含了声明逻辑，直接 visit 即可
+				this.visitVariableDeclaration(paramStmt);
+			} else if (paramStmt.type === 'ExpressionStatement') {
+				const expr = paramStmt.expression;
+
+				if (expr.type === 'Identifier') {
+					// 情况 2: [= a =]
+					// 手动将 'a' 声明为 'parameter'
+					this.declare(expr.symbol, 'parameter', typeMap.unknown, expr);
+					this.visitIdentifier(expr); // 访问它，以便高亮和引用查找
+				} else if (expr.type === 'UnaryExpression' && expr.argument.type === 'Identifier') {
+					// 情况 3: [= 高仿 a =] 或 [= 抢走 a =]
+					const idNode = expr.argument;
+					// 手动将 'a' 声明为 'parameter'
+					this.declare(idNode.symbol, 'parameter', typeMap.unknown, idNode);
+					this.visit(expr); // 访问整个 '高仿 a' 表达式
+				} else {
+					// 情况 4: [= 1+2 =] 或 [= '字面量' =] 或 [= a@1 =]
+					// 没有名字，只访问表达式，不声明
+					this.visit(expr);
+				}
+			}
+		}
+
 		this.visit(node.body);
 		this.leaveScope();
 	}
@@ -135,7 +173,7 @@ class SymbolAnalyzer {
 
 			// 处理所有权转移
 			if (node.initialization.kind === 'Move' && node.initialization.value.type === 'Identifier') {
-				this.markAsMoved((node.initialization.value as AST.Identifier).symbol);
+				this.markAsMoved(node.initialization.value.symbol);
 			}
 		}
 
@@ -147,11 +185,11 @@ class SymbolAnalyzer {
 		this.visit(node.assignee); // 现在 assignee 是一个表达式，直接 visit 即可
 		this.visit(node.value);
 		if (node.kind === 'Move' && node.value.type === 'Identifier') {
-			this.markAsMoved((node.value as AST.Identifier).symbol);
+			this.markAsMoved(node.value.symbol);
 		}
 	}
 
-	private visitBinaryExpression(node: AST.BinaryExpression) {
+	private visitBinaryExpression(node: AST.BinaryExpression | AST.LogicalExpression) {
 		this.visit(node.left);
 		this.visit(node.right);
 

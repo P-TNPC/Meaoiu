@@ -1,14 +1,15 @@
 // src/core/tokenizer.ts
 
 import { preprocess } from './preprocessor.js';
+import { builtInFunctionNames } from './builtIns.js';
 
 export type TokenType =
 	| 'KEYWORD_USE'
 	| 'KEYWORD_IS'
 	| 'KEYWORD_LIKE'
 	| 'KEYWORD_CLONE'
-	| 'KEYWORD_MOVE_ASSIGN' // 新增: 才是
-	| 'KEYWORD_SNATCH' // 新增: 抢走
+	| 'KEYWORD_MOVE_ASSIGN'
+	| 'KEYWORD_SNATCH'
 	| 'KEYWORD_CONFIRM'
 	| 'KEYWORD_ELSE'
 	| 'KEYWORD_LOOP'
@@ -77,9 +78,12 @@ export interface TokenizerOptions {
 
 export function tokenize(sourceCode: string, options: TokenizerOptions): Token[] {
 	options.convertFullWidth ??= true;
-	if (options?.convertFullWidth) {
-		sourceCode = preprocess(sourceCode);
-	}
+	if (options?.convertFullWidth) sourceCode = preprocess(sourceCode);
+
+	// 小本本：记函数
+	const functionNames = new Set<string>(builtInFunctionNames);
+	let expectingFuncNameAfterParamEnd = false;
+
 	const tokens: Token[] = [];
 	let line = 1;
 	let col = 1;
@@ -121,9 +125,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 				if (char === '(') nestingLevel++;
 				else if (char === ')') nestingLevel--;
 
-				if (nestingLevel > 0) {
-					commentContent += char;
-				}
+				if (nestingLevel > 0) commentContent += char;
 				advance();
 			}
 
@@ -144,8 +146,11 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 			}
 		}
 		if (matchedKeyword) {
-			tokens.push({ type: KEYWORDS[matchedKeyword]!, value: matchedKeyword, line: startLine, col: startCol });
+			const tokenType = KEYWORDS[matchedKeyword]!;
+			tokens.push({ type: tokenType, value: matchedKeyword, line: startLine, col: startCol });
 			advance(matchedKeyword.length);
+
+			if (tokenType === 'KEYWORD_DEF') expectingFuncNameAfterParamEnd = true; // '想要'
 			continue;
 		}
 
@@ -158,6 +163,8 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 			if (twoCharSymbol === '#]') type = 'BLOCK_END';
 			tokens.push({ type, value: twoCharSymbol, line: startLine, col: startCol });
 			advance(2);
+
+			if (type !== 'PARAM_END' || !expectingFuncNameAfterParamEnd) expectingFuncNameAfterParamEnd = false;
 			continue;
 		}
 
@@ -225,9 +232,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 							break;
 						}
 					}
-					if (isKeywordAhead) {
-						break;
-					}
+					if (isKeywordAhead) break;
 					identifier += sourceCode[cursor]!;
 					advance();
 				}
@@ -236,6 +241,11 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 			// 最后，统一创建 Token
 			if (identifier) {
 				tokens.push({ type: 'IDENTIFIER', value: identifier, line: identifierStartLine!, col: identifierStartCol! });
+				if (expectingFuncNameAfterParamEnd) {
+					// 抓到了！这个标识符就是函数名喵！
+					functionNames.add(identifier);
+					expectingFuncNameAfterParamEnd = false; // 重置状态
+				}
 			}
 			continue;
 		}
@@ -245,5 +255,80 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 	}
 
 	tokens.push({ type: 'EOF', value: 'EndOfFile', line, col });
-	return tokens;
+	return repairCallTokens(tokens, functionNames);
+}
+
+/**
+ * 遍历原始 Token 列表，修复被错误合并的 `扒集合名函数名`。
+ */
+function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] {
+	// 为了最高效的匹配，按长度降序排序
+	// 这样能确保 `喵` 不会错误地匹配 `xxx高级喵` 的 `喵`
+	const sortedFunctionNames = Array.from(functionNames).sort((a, b) => b.length - a.length);
+
+	const repairedTokens: Token[] = [];
+	let i = 0;
+
+	while (i < tokens.length) {
+		const currentToken = tokens[i]!;
+		const nextToken = tokens[i + 1];
+		const nextNextToken = tokens[i + 2];
+
+		// 检查是否是需要修复的目标
+		if (
+			currentToken.type === 'KEYWORD_CALL' && // 是 '扒'
+			nextToken &&
+			nextToken.type === 'IDENTIFIER' && // 后面跟着一个标识符
+			!(nextNextToken && nextNextToken.type === 'IDENTIFIER') // 后面无跟着的第二个标识符
+		) {
+			// 找到了一个潜在目标，例如 '扒 集合名函数名 ~'
+			const tokenToSplit = nextToken;
+			let foundSplit = false;
+
+			for (const funcName of sortedFunctionNames) {
+				// 检查这个函数名是不是标识符的后缀
+				if (tokenToSplit.value.endsWith(funcName) && tokenToSplit.value.length > funcName.length) {
+					// 找到了！是它喵！
+					const collectionName = tokenToSplit.value.substring(0, tokenToSplit.value.length - funcName.length);
+
+					// 1. 创建“集合名” Token
+					const collectionToken: Token = {
+						type: 'IDENTIFIER',
+						value: collectionName,
+						line: tokenToSplit.line,
+						col: tokenToSplit.col,
+					};
+
+					// 2. 创建“函数名” Token，注意计算新的列号
+					const functionToken: Token = {
+						type: 'IDENTIFIER',
+						value: funcName,
+						line: tokenToSplit.line,
+						col: tokenToSplit.col + collectionName.length,
+					};
+
+					// 3. 将修复后的 Token 推入
+					repairedTokens.push(currentToken); // 扒
+					repairedTokens.push(collectionToken); // 集合名
+					repairedTokens.push(functionToken); // 函数名
+
+					i += 2; // 跳过 '扒' 和 '集合名函数名' 这两个原始 Token
+					foundSplit = true;
+					break; // 匹配成功，停止搜索
+				}
+			}
+
+			// 如果没找到匹配，说明它就是一个普通的 `扒 某个变量`，正常推入
+			if (!foundSplit) {
+				repairedTokens.push(currentToken);
+				i++;
+			}
+		} else {
+			// 不是需要修复的目标，或者是一个安全的 `扒 集合名 函数名`
+			repairedTokens.push(currentToken);
+			i++;
+		}
+	}
+
+	return repairedTokens;
 }

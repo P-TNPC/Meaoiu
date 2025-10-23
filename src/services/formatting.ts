@@ -62,28 +62,38 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 		}
 		case 'BlockStatement': {
 			const n = node as AST.BlockStatement;
-			if (n.body.length === 0) {
-				content = '[##]';
-				break;
+			if (n.isCollection) {
+				// 是集合 [= ... =]
+				if (n.body.length === 0) {
+					content = '[==]';
+					break;
+				}
+				// 集合元素用逗号+空格连接
+				const blockContent = n.body
+					.map(stmt => indent(nextLevelOptions) + printNodeContent(stmt, nextLevelOptions))
+					.join(',\n');
+				content = `[=\n${blockContent}\n${indent(options)}=]`;
+			} else {
+				// 是普通块 [# ... #]
+				if (n.body.length === 0) {
+					content = '[##]';
+					break;
+				}
+				// 语句用~和换行连接
+				const blockContent = n.body
+					.map(stmt => printNodeContent(stmt, nextLevelOptions) + '~' + printTrailingComments(stmt))
+					.join('\n');
+				content = `[#\n${blockContent}\n${indent(options)}#]`;
 			}
-			const blockContent = n.body
-				.map(stmt => printNodeContent(stmt, nextLevelOptions) + '~' + printTrailingComments(stmt))
-				.join('\n');
-			content = `[#\n${blockContent}\n${indent(options)}#]`;
 			break;
 		}
 
 		case 'VariableDeclaration': {
 			const n = node as AST.VariableDeclaration;
-			// 检查是否有初始化部分
 			if (n.initialization) {
-				const assignContent = printNodeContent(n.initialization, options).trim();
-				// 替换掉 AssignmentStatement 开头的变量名，换成 '蹭 变量'
-				content = assignContent.replace(
-					printIdentifier(n.initialization.assignee as AST.Identifier),
-					`蹭 ${printIdentifier(n.identifier)}`
-				);
-				content = `${indent(options)}${content}`;
+				// 复用 AssignmentStatement 的打印逻辑
+				const assignContent = printNodeContent(n.initialization, { ...options, level: 0 }).trim();
+				content = `${indent(options)}蹭 ${assignContent}`;
 			} else {
 				content = `${indent(options)}蹭 ${printIdentifier(n.identifier)}`;
 			}
@@ -91,21 +101,15 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 		}
 		case 'AssignmentStatement': {
 			const n = node as AST.AssignmentStatement;
-			const k = n.kind === 'Move' ? '才是' : (n.kind === 'Copy' ? '就像' : '就是');
-			// 现在 assignee 是一个表达式，用 printNodeContent 来格式化
+			const k = n.kind === 'Move' ? '才是' : n.kind === 'Copy' ? '就像' : '就是';
 			content = `${indent(options)}${printNodeContent(n.assignee, options)} ${k} ${printNodeContent(n.value, options)}`;
 			break;
 		}
 		case 'CallExpression': {
 			const n = node as AST.CallExpression;
-			const a = n.args
-				.map(arg => {
-					const p = arg.isClone ? '高仿 ' : '';
-					return p + printNodeContent(arg.expression, { ...options, level: 0 });
-				})
-				.join(', ');
+			const argsExpr = printNodeContent(n.args, { ...options, level: 0 });
 			const p = options.level > 0 ? indent(options) : '';
-			content = `${p}扒[=${a}=]${printIdentifier(n.callee)}`;
+			content = `${p}扒 ${argsExpr} ${printIdentifier(n.callee)}`;
 			break;
 		}
 		case 'IfStatement': {
@@ -117,8 +121,8 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 		}
 		case 'FunctionDeclaration': {
 			const n = node as AST.FunctionDeclaration;
-			const p = n.params.map(p => printIdentifier(p)).join(', ');
-			content = `${indent(options)}想要[=${p}=]${printIdentifier(n.name)} ${printNodeContent(n.body, options)}`;
+			const paramsBlock = printNodeContent(n.params, options);
+			content = `${indent(options)}想要 ${paramsBlock} ${printIdentifier(n.name)} ${printNodeContent(n.body, options)}`;
 			break;
 		}
 		case 'LoopStatement': {
@@ -126,16 +130,24 @@ function printNodeContent(node: AST.AstNode | undefined, options: FormattingOpti
 			break;
 		}
 		case 'ReturnStatement': {
-			const n = node as AST.ReturnStatement;
-			const a = n.argument;
-			let keyword = '';
-			if (n.kind === 'Copy') keyword = '高仿 ';
-			if (n.kind === 'Move') keyword = '抢走 ';
-			content = `${indent(options)}叼回来 ${keyword}${a ? printNodeContent(a, options) : ''}`;
+			const a = (node as AST.ReturnStatement).argument;
+			content = `${indent(options)}叼回来${a ? ` ${printNodeContent(a, options)}` : ''}`;
 			break;
 		}
 		case 'BreakStatement': {
 			content = `${indent(options)}累了`;
+			break;
+		}
+		case 'MemberAccessExpression': {
+			const n = node as AST.MemberAccessExpression;
+			// 打印 a@b
+			content = `${printNodeContent(n.object, options)}@${printNodeContent(n.property, options)}`;
+			break;
+		}
+		case 'UnaryExpression': {
+			const n = node as AST.UnaryExpression;
+			const op = n.operator === 'Copy' ? '高仿' : '抢走';
+			content = `${op} ${printNodeContent(n.argument, options)}`;
 			break;
 		}
 		case 'BinaryExpression': {

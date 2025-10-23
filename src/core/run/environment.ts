@@ -7,14 +7,15 @@ interface Variable {
 	value: VariableValue;
 	moved: boolean;
 }
-type VariableReference = { isVariableReference: true; name: string; value: VariableValue };
+type VariableReference = { isVariableReference: true; scope: Environment; name: string; value: VariableValue };
 
 let envCounter = 0;
 export class Environment {
-	private id: number;
+	public id: number;
 	private parent: Environment | undefined;
 	public variables: Map<string, Variable> = new Map();
 	private functions: Map<string, AST.FunctionDeclaration> = new Map();
+	public orderedVariableNames: string[] = [];
 
 	constructor(parent?: Environment) {
 		this.parent = parent;
@@ -27,8 +28,9 @@ export class Environment {
 	 */
 	public declare(name: string) {
 		if (this.variables.has(name)) throw new Error(`变量 '${name}' 已经被“蹭”过一次了喵！`);
-		this.variables.set(name, { value: null, moved: false });
 		logger.debug(`[ENV #${this.id}] DECLARE: '${name}'`);
+		this.variables.set(name, { value: null, moved: false });
+		this.orderedVariableNames.push(name);
 		return null;
 	}
 
@@ -36,19 +38,13 @@ export class Environment {
 	 * 为已存在的变量赋值。
 	 */
 	public assign(name: string, value: any, kind: AST.AssignmentKind): any {
-		const executionScope = this; // `this` is the scope where the assignment happens.
+		const executionScope = this;
 
 		// 立即在当前执行作用域解析源头最终值
-		const finalValue = executionScope.resolveValue(value);
+		let finalValue = executionScope.resolveValue(value);
 
 		// 如果赋值操作是 'Move'，需要标记源变量为 "已移动"
-		if (value?.isVariableReference && kind === 'Move') {
-			const sourceScope = executionScope.findVariableScope(value.name);
-			if (sourceScope) {
-				const sourceVar = sourceScope.variables.get(value.name);
-				if (sourceVar) sourceVar.moved = true;
-			}
-		}
+		if (value?.isVariableReference && kind === 'Move') value.scope.variables.get(value.name)!.moved = true;
 
 		// 查找并追踪目标的最终存放位置
 		const initialTargetScope = executionScope.findVariableScope(name);
@@ -63,7 +59,6 @@ export class Environment {
 			finalTargetScope = targetVar.value.scope;
 			finalTargetName = targetVar.value.name;
 			targetVar = finalTargetScope.variables.get(finalTargetName)!;
-			logger.debug(`跟随引用到 '${finalTargetName}' (在环境 #${finalTargetScope.id})`);
 		}
 
 		// 在最终位置赋值
@@ -73,20 +68,17 @@ export class Environment {
 		);
 		if (kind === 'Reference') {
 			if (value?.isVariableReference) {
-				const sourceScope = executionScope.findVariableScope(value.name);
-				if (!sourceScope) throw new Error(`找不到可以引用的玩具「${value.name}」喵！`);
 				finalTargetScope.variables.set(finalTargetName, {
-					value: { isReference: true, scope: sourceScope, name: value.name },
+					value: { isReference: true, scope: value.scope, name: value.name },
 					moved: false,
 				});
-			} else {
-				// 无法引用，视作 'Copy'
-				finalTargetScope.variables.set(finalTargetName, { value: finalValue, moved: false });
+				return finalValue;
 			}
-		} else {
-			// 对于 'Copy' 和 'Move'，直接赋予已经解析好的值
-			finalTargetScope.variables.set(finalTargetName, { value: finalValue, moved: false });
+		} else if (kind === 'Copy' && finalValue instanceof Environment) {
+			// 复制一个集合，实际上是创建一个“视图”
+			finalValue = finalValue.createShallowCopy();
 		}
+		finalTargetScope.variables.set(finalTargetName, { value: finalValue, moved: false });
 
 		return finalValue;
 	}
@@ -97,20 +89,27 @@ export class Environment {
 			value: { isReference: true, scope: targetScope, name: targetName },
 			moved: false,
 		});
+		this.orderedVariableNames.push(name);// 确保引用也被添加到有序列表中
 	}
 
-	public lookup(name: string): VariableReference {
-		const scope = this.findVariableScope(name);
-		if (!scope) throw new Error(`咦？没找到叫做「${name}」的玩具，是不是被你藏起来了？`);
-		const variable = scope.variables.get(name)!;
-		if (variable.moved) throw new Error(`喵呜！变量「${name}」里的东西已经被拿走了，现在是只空碗！`);
-		logger.debug(`[ENV #${this.id}] LOOKUP: '${name}'. Found in Env #${scope.id}.`);
-
-		if (variable.value?.isReference) {
-			logger.debug(`Following reference from '${name}' to '${variable.value.name}' in Env #${variable.value.scope.id}`);
-			return variable.value.scope.lookup(variable.value.name);
+	public lookup(name: string | number): VariableReference {
+		let resolvedName = '';
+		if (typeof name === 'number') {
+			if (name < 1 || name > this.orderedVariableNames.length) throw new Error(`喵呜！找不到索引为 ${name} 的玩具！`);
+			resolvedName = this.orderedVariableNames[name - 1]!;
+		} else {
+			resolvedName = name as string;
 		}
-		return { isVariableReference: true, name, value: variable.value };
+
+		const scope = this.findVariableScope(resolvedName);
+		if (!scope) throw new Error(`咦？没找到叫做「${resolvedName}」的玩具，是不是被你藏起来了？`);
+		const variable = scope.variables.get(resolvedName)!;
+		if (variable.moved) throw new Error(`喵呜！变量「${resolvedName}」里的东西已经被拿走了，现在是只空碗！`);
+		logger.debug(`[ENV #${this.id}] LOOKUP: '${resolvedName}'. Found in Env #${scope.id}.`);
+
+		if (variable.value?.isReference) return variable.value.scope.lookup(variable.value.name);
+
+		return { isVariableReference: true, scope: scope, name: resolvedName, value: variable.value };
 	}
 
 	public findVariableScope(name: string): Environment | undefined {
@@ -120,7 +119,7 @@ export class Environment {
 	}
 
 	public resolveValue(value: any): any {
-		if (value?.isVariableReference) return this.lookup(value.name).value;
+		if (value?.isVariableReference) return value.value;
 		return value;
 	}
 
@@ -131,5 +130,14 @@ export class Environment {
 	public lookupFunction(name: string): AST.FunctionDeclaration | undefined {
 		if (this.functions.has(name)) return this.functions.get(name);
 		return this.parent?.lookupFunction(name);
+	}
+
+	public createShallowCopy(): Environment {
+		const newEnv = new Environment(this.parent);
+		for (const varName of this.orderedVariableNames) {
+			const originalVarRef = this.lookup(varName);
+			newEnv.declareReference(varName, originalVarRef.scope, originalVarRef.name);
+		}
+		return newEnv;
 	}
 }

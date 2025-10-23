@@ -298,8 +298,9 @@ export class Parser {
 		return node;
 	}
 
-	private parseVariableDeclaration(): AST.VariableDeclaration {
-		const sT = this.advance();
+	private parseVariableDeclaration(isImplicit: boolean = false): AST.VariableDeclaration {
+		const sT = this.current();
+		if (!isImplicit) this.expect('KEYWORD_USE', '声明需要以 "蹭" 开头喵'); // 显式声明，消费关键字
 		const identifier = this.parseIdentifier();
 		let initialization: AST.VariableDeclaration['initialization'];
 
@@ -325,20 +326,9 @@ export class Parser {
 
 	private parseFunctionDeclaration(): AST.FunctionDeclaration {
 		const s = this.advance();
-		this.expect('PARAM_START', '计谋声明需要贡品列表喵');
-		const p: AST.Identifier[] = [];
-
-		if (this.current().type !== 'PARAM_END') {
-			p.push(this.parseIdentifier());
-			while (this.current().type === 'COMMA') {
-				this.advance();
-				p.push(this.parseIdentifier());
-			}
-		}
-
-		this.expect('PARAM_END', '贡品列表需要结束喵');
+		const p = this.parseBlockStatement(true);
 		const n = this.parseIdentifier();
-		const b = this.parseBlockStatement();
+		const b = this.parseBlockStatement(false);
 		return {
 			type: 'FunctionDeclaration',
 			name: n,
@@ -421,18 +411,7 @@ export class Parser {
 
 		if (aT.type === 'KEYWORD_IS') {
 			// 就是
-			if (this.current().type === 'KEYWORD_CLONE') {
-				// 就是 高仿
-				this.advance();
-				k = 'Copy';
-			} else if (this.current().type === 'KEYWORD_SNATCH') {
-				// 就是 抢走
-				this.advance();
-				k = 'Move';
-			} else {
-				// 就是
-				k = 'Reference';
-			}
+			k = 'Reference';
 		} else if (aT.type === 'KEYWORD_LIKE') {
 			// 就像
 			k = 'Copy';
@@ -537,97 +516,92 @@ export class Parser {
 	private parseReturnStatement(): AST.ReturnStatement {
 		const s = this.advance();
 		let a: AST.Expression | undefined;
-		let k: AST.ReturnKind = 'Reference'; // 默认是引用返回
-
-		// 检查是否有返回关键字
-		if (this.current().type === 'KEYWORD_CLONE') {
-			this.advance();
-			k = 'Copy';
-		} else if (this.current().type === 'KEYWORD_SNATCH') {
-			this.advance();
-			k = 'Move';
-		}
 
 		if (this.current().type !== 'TERMINATOR') a = this.parseExpression();
 
 		return {
 			type: 'ReturnStatement',
 			argument: a,
-			kind: k,
 			line: s.line,
 			col: s.col,
 			...this.endLoc(),
 		};
 	}
 
-	private parseBlockStatement(): AST.BlockStatement {
-		const s = this.expect('BLOCK_START', '想法需要以 [# 开头喵');
-		const b: AST.Statement[] = [];
-		this.blockDepth++; // 进入想法，深度+1
+	private parseBlockStatement(isCollection: boolean = false): AST.BlockStatement {
+		const startToken = isCollection
+			? this.expect('PARAM_START', '集合或参数列表需要以 [= 开头喵')
+			: this.expect('BLOCK_START', '想法需要以 [# 开头喵');
 
-		while (this.current().type !== 'BLOCK_END' && this.current().type !== 'EOF') {
-			if (this.current().type === 'TERMINATOR') {
+		const body: AST.Statement[] = [];
+		this.blockDepth++;
+
+		const endTokenType = isCollection ? 'PARAM_END' : 'BLOCK_END';
+		const separatorTokenType = isCollection ? 'COMMA' : 'TERMINATOR';
+		const blockName = isCollection ? '集合' : '想法';
+
+		while (this.current().type !== endTokenType && this.current().type !== 'EOF') {
+			if (isCollection) {
+				body.push(this.parseCollectionElement());
+				if (this.current().type !== separatorTokenType) break;
 				this.advance();
-				continue;
+			} else {
+				if (this.current().type === separatorTokenType) {
+					this.advance();
+					continue;
+				}
+				body.push(this.parseStatement());
 			}
-			b.push(this.parseStatement());
 		}
 
-		const e = this.expect('BLOCK_END', '想法需要以 #] 结尾喵');
-		this.blockDepth--; // 退出想法，深度-1
+		const endToken = this.expect(endTokenType, `${blockName}需要以 ${isCollection ? '=]' : '#]'} 结尾喵`);
+		this.blockDepth--;
 
 		return {
 			type: 'BlockStatement',
-			body: b,
-			line: s.line,
-			col: s.col,
-			...this.endLoc(e),
+			body,
+			isCollection,
+			line: startToken.line,
+			col: startToken.col,
+			...this.endLoc(endToken),
 		};
 	}
 
-	private parseCallExpression(): AST.CallExpression {
-		const s = this.advance();
-		this.expect('PARAM_START', '计谋施展需要贡品列表喵');
-		const a: AST.Argument[] = [];
+	private parseCollectionElement(): AST.Statement {
+		const currentType = this.current().type;
+		const peekType = this.peek().type;
 
-		if (this.current().type !== 'PARAM_END') {
-			do {
-				let i = false;
-				if (this.current().type === 'KEYWORD_CLONE') {
-					this.advance();
-					i = true;
-				}
-				const e = this.parseExpression();
-				a.push({
-					type: 'Argument',
-					expression: e,
-					isClone: i,
-					line: e.line,
-					col: e.col,
-					...this.endLoc(),
-				});
+		// 模式一: 显式声明，例如 `蹭 a 就是 1`
+		if (currentType === 'KEYWORD_USE') return this.parseVariableDeclaration(false);
 
-				if (this.current().type === 'COMMA') {
-					this.advance();
-				} else {
-					break;
-				}
-			} while (this.current().type !== 'PARAM_END');
+		// 模式二: 隐式声明，例如 `a 就是 1`
+		if (
+			currentType === 'IDENTIFIER' &&
+			(peekType === 'KEYWORD_IS' || peekType === 'KEYWORD_LIKE' || peekType === 'KEYWORD_MOVE_ASSIGN')
+		) {
+			return this.parseVariableDeclaration(true);
 		}
 
-		this.expect('PARAM_END', '贡品列表需要结束喵');
-		const c = this.parseIdentifier();
+		// 模式三：其他所有情况，都是一个独立的表达式
+		const expr = this.parseExpression();
+		return { type: 'ExpressionStatement', expression: expr, line: expr.line, col: expr.col, ...this.endLoc() };
+	}
+
+	private parseCallExpression(): AST.CallExpression {
+		const sT = this.advance();
+		const argsExpr = this.parseExpression();
+		const callee = this.parseIdentifier();
+
 		return {
 			type: 'CallExpression',
-			callee: c,
-			args: a,
-			line: s.line,
-			col: s.col,
+			callee,
+			args: argsExpr,
+			line: sT.line,
+			col: sT.col,
 			...this.endLoc(),
 		};
 	}
 
-	// 表达式解析添加容错
 	private parseExpression(): AST.Expression {
 		if (this.mode === 'tolerant') {
 			try {
@@ -793,7 +767,21 @@ export class Parser {
 	}
 
 	private parseMultiplicativeExpression(): AST.Expression {
-		let l = this.parsePrimaryExpression();
+		let l = this.parseUnaryExpression();
+
+		while (this.current().type === 'ACCESSOR') {
+			const s = this.current();
+			this.advance(); // 消费 '@'
+			const r = this.parsePrimaryExpression();
+			l = {
+				type: 'MemberAccessExpression',
+				object: l,
+				property: r,
+				line: s.line,
+				col: s.col,
+				...this.endLoc(),
+			};
+		}
 
 		while ((this.current().value === '*' || this.current().value === '/') && this.peek().type !== 'COMMA') {
 			const s = this.current();
@@ -811,6 +799,26 @@ export class Parser {
 		}
 
 		return l;
+	}
+
+	private parseUnaryExpression(): AST.Expression {
+		if (this.current().type === 'KEYWORD_CLONE' || this.current().type === 'KEYWORD_SNATCH') {
+			const sT = this.advance();
+			const op: AST.UnaryOperator = sT.type === 'KEYWORD_CLONE' ? 'Copy' : 'Move';
+			// 递归调用，这样就可以处理像“高仿 高仿 a”这样的写法
+			const arg = this.parseUnaryExpression();
+
+			return {
+				type: 'UnaryExpression',
+				operator: op,
+				argument: arg,
+				line: sT.line,
+				col: sT.col,
+				...this.endLoc(),
+			};
+		}
+
+		return this.parsePrimaryExpression();
 	}
 
 	private parsePrimaryExpression(): AST.Expression {
@@ -873,6 +881,9 @@ export class Parser {
 			case 'BLOCK_START':
 				this.position--; // 把指针拨回去，让 parseBlockOrIfStatement 处理
 				return this.parseBlockOrIfStatement() as AST.Expression;
+			case 'PARAM_START':
+				this.position--; // 把指针拨回去，让 parseBlockStatement 处理
+				return this.parseBlockStatement(true);
 			case 'KEYWORD_LOOP':
 				this.position--; // 把指针拨回去，让 parseLoopStatement 处理
 				return this.parseLoopStatement();
