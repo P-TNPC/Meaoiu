@@ -8,6 +8,7 @@ export interface SymbolInfo {
 	name: string;
 	kind: 'variable' | 'function' | 'parameter';
 	type: MeaoiuType;
+	valueRef?: SymbolInfo | undefined;
 	declarations: AST.AstNode[]; // 在哪里声明的
 	references: AST.AstNode[]; // 在哪里被引用的
 	isBuiltIn?: boolean; // 是否自家喵

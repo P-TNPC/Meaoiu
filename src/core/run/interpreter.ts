@@ -24,9 +24,7 @@ export async function evaluate(node: AST.Node, env: Environment, builtIns: Built
 				return env.lookup(node.symbol);
 			case 'Program': {
 				let lastEvaluatedInProgram: any;
-				for (const statement of node.body) {
-					lastEvaluatedInProgram = await evaluate(statement, env, builtIns);
-				}
+				for (const statement of node.body) lastEvaluatedInProgram = await evaluate(statement, env, builtIns);
 				return lastEvaluatedInProgram;
 			}
 			case 'BlockStatement': {
@@ -37,7 +35,7 @@ export async function evaluate(node: AST.Node, env: Environment, builtIns: Built
 
 				for (const stmt of block.body) {
 					if (block.isCollection) {
-						// --- 集合的特殊求值规则 ---
+						// --- 纸箱的特殊求值规则 ---
 						if (stmt.type === 'VariableDeclaration') {
 							// 处理带 `蹭` 或隐式的 `a 就是 1`
 							await evaluate(stmt, blockEnv, builtIns);
@@ -58,7 +56,7 @@ export async function evaluate(node: AST.Node, env: Environment, builtIns: Built
 					}
 				}
 
-				if (block.isCollection) return blockEnv; // 返回集合的环境
+				if (block.isCollection) return blockEnv; // 返回纸箱的环境
 
 				return env.resolveValue(lastEvaluated);
 			}
@@ -70,7 +68,7 @@ export async function evaluate(node: AST.Node, env: Environment, builtIns: Built
 
 				if (!(collection instanceof Environment)) {
 					throw new Error(
-						`[${memberExpr.object.line}:${memberExpr.object.col}] 运行时错误喵: 只能用 '@' 从集合里拿东西喵！`
+						`[${memberExpr.object.line}:${memberExpr.object.col}] 运行时错误喵: 只能用 '@' 从纸箱里拿东西喵！`
 					);
 				}
 
@@ -79,7 +77,7 @@ export async function evaluate(node: AST.Node, env: Environment, builtIns: Built
 
 				if (typeof propValue !== 'number' && typeof propValue !== 'string') {
 					throw new Error(
-						`[${memberExpr.property.line}:${memberExpr.property.col}] 运行时错误喵: 集合的索引必须是摸数或闲话喵！`
+						`[${memberExpr.property.line}:${memberExpr.property.col}] 运行时错误喵: 纸箱的索引必须是摸数或闲话喵！`
 					);
 				}
 
@@ -118,27 +116,36 @@ export async function evaluate(node: AST.Node, env: Environment, builtIns: Built
 				const leftVal = env.resolveValue(left);
 				const rightVal = env.resolveValue(right);
 
+				const leftType = getMeaoiuType(leftVal);
+				const rightType = getMeaoiuType(rightVal);
+
 				const op = binExpr.operator;
 
-				if (['-', '*', '/'].includes(op)) {
-					if (typeof leftVal !== 'number' || typeof rightVal !== 'number') {
-						throw new Error(`'${op}' 操作符只能用于两个 {${typeMap.number}} 之间喵!`);
-					}
+				if (leftType !== rightType && op !== '==') {
+					throw new Error(`'${op}' 操作符只能给同类用喵! ${leftType} 和 ${rightType} 不可以喵!`);
+				}
+
+				if (['-', '*', '/'].includes(op) && leftType !== typeMap.number) {
+					throw new Error(`'${op}' 操作符只能用于两个 {${typeMap.number}} 之间喵!`);
 				}
 
 				if (['+', '>', '<', '>=', '<='].includes(op)) {
-					if (typeof leftVal !== typeof rightVal) {
+					if (
+						leftType !== typeMap.number &&
+						leftType !== typeMap.string &&
+						!(leftType === typeMap.collection && op === '+')
+					) {
 						throw new Error(
-							`'${op}' 操作符只能给同类用喵! ${getMeaoiuType(leftVal)} 和 ${getMeaoiuType(rightVal)} 不可以喵!`
+							`'${op}' 操作符只能用在 ${typeMap.number}、${typeMap.string}${
+								op === '+' ? ` 或 ${typeMap.collection}` : ''
+							} 上喵!`
 						);
 					}
-					if (typeof leftVal !== 'number' && typeof leftVal !== 'string') {
-						throw new Error(`'${op}' 操作符只能用于 {${typeMap.number}} 或 {${typeMap.string}} 之间喵!`);
-					}
 				}
+
 				switch (op) {
 					case '+':
-						return leftVal + rightVal;
+						return leftType === typeMap.collection ? leftVal.createMergedView(rightVal) : leftVal + rightVal;
 					case '-':
 						return leftVal - rightVal;
 					case '*':
@@ -189,12 +196,12 @@ export async function evaluate(node: AST.Node, env: Environment, builtIns: Built
 					// 目标是 a@b 这种形式
 					const memberExpr = assignStmt.assignee;
 
-					// 找到集合
+					// 找到纸箱
 					const collectionRef = await evaluate(memberExpr.object, env, builtIns);
 					const collection = env.resolveValue(collectionRef);
 					if (!(collection instanceof Environment)) {
 						throw new Error(
-							`[${memberExpr.object.line}:${memberExpr.object.col}] 运行时错误喵: 只能给集合的成员赋值喵！`
+							`[${memberExpr.object.line}:${memberExpr.object.col}] 运行时错误喵: 只能给纸箱的成员赋值喵！`
 						);
 					}
 
@@ -211,7 +218,7 @@ export async function evaluate(node: AST.Node, env: Environment, builtIns: Built
 						key = propValue;
 					} else {
 						throw new Error(
-							`[${memberExpr.property.line}:${memberExpr.property.col}] 运行时错误喵: 集合的索引必须是摸数或闲话喵！`
+							`[${memberExpr.property.line}:${memberExpr.property.col}] 运行时错误喵: 纸箱的索引必须是摸数或闲话喵！`
 						);
 					}
 
@@ -264,7 +271,7 @@ export async function evaluate(node: AST.Node, env: Environment, builtIns: Built
 				const argsCollection = env.resolveValue(argsRef);
 				if (!(argsCollection instanceof Environment)) {
 					throw new Error(
-						`[${callExpr.args.line}:${callExpr.args.col}] 运行时错误喵: 扒计谋时，第一个参数必须是一个集合喵！`
+						`[${callExpr.args.line}:${callExpr.args.col}] 运行时错误喵: 扒计谋时，第一个参数必须是一个纸箱喵！`
 					);
 				}
 
@@ -300,11 +307,11 @@ export async function evaluate(node: AST.Node, env: Environment, builtIns: Built
 					);
 				}
 
-				// 按顺序将参数集合里的变量“嫁接”到函数内部作用域
+				// 按顺序将参数纸箱里的变量“嫁接”到函数内部作用域
 				for (let i = 0; i < paramNames.length; i++) {
 					const paramName = paramNames[i]!;
 					const argVarName = argsCollection.orderedVariableNames[i]!;
-					// 创建从“函数参数名”到“调用集合中变量”的引用
+					// 创建从“函数参数名”到“调用纸箱中变量”的引用
 					functionEnv.declareReference(paramName, argsCollection, argVarName);
 				}
 
@@ -366,7 +373,7 @@ export async function evaluate(node: AST.Node, env: Environment, builtIns: Built
 }
 
 // ----------------------------------------------------------------
-// 辅助函数：专门用于处理集合 [= ... =] 中的匿名元素（表达式）
+// 辅助函数：专门用于处理纸箱 [= ... =] 中的匿名元素（表达式）
 // ----------------------------------------------------------------
 async function _evaluateCollectionElement(
 	stmt: AST.ExpressionStatement,
@@ -389,12 +396,12 @@ async function _evaluateCollectionElement(
 	} else if (expr.type === 'UnaryExpression') {
 		// 元素是 `高仿 a` 或 `抢走 a`
 		valueToAssign = await evaluateFn(expr, blockEnv, builtIns); // 得到最终的值
-		kind = 'Copy'; // 值已经是 C/M 过的，我们直接“复制”进集合
+		kind = 'Copy'; // 值已经是 C/M 过的，我们直接“复制”进纸箱
 		if (expr.argument.type === 'Identifier') {
 			name = expr.argument.symbol; // 名字就是 `a`
 		}
 	} else {
-		// 元素是字面量（'毛线球'）或嵌套集合（[=...=]）
+		// 元素是字面量（'毛线球'）或嵌套纸箱（[=...=]）
 		valueToAssign = await evaluateFn(expr, blockEnv, builtIns);
 		kind = 'Copy';
 		// 名字保持 null，下面会自动生成
@@ -408,10 +415,10 @@ async function _evaluateCollectionElement(
 	}
 
 	if (blockEnv.variables.has(name)) {
-		throw new Error(`[${stmt.line}:${stmt.col}] 运行时错误喵: 集合里已经有一个叫做「${name}」的玩具了喵！`);
+		throw new Error(`[${stmt.line}:${stmt.col}] 运行时错误喵: 纸箱里已经有一个叫做「${name}」的玩具了喵！`);
 	}
 
-	// 将这个元素“声明”到集合的环境中
+	// 将这个元素“声明”到纸箱的环境中
 	blockEnv.declare(name); // 这会将 name 添加到 orderedVariableNames
 	blockEnv.assign(name, valueToAssign, kind);
 

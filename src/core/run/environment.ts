@@ -1,6 +1,6 @@
 // src/core/run/environment.ts
 import type * as AST from '../ast.js';
-import logger from '../run/logger.js'; // 修正了 logger 的引用路径
+import logger from '../run/logger.js';
 
 type VariableValue = { isReference: true; scope: Environment; name: string } | null; // 允许在声明时临时为 null
 interface Variable {
@@ -75,7 +75,7 @@ export class Environment {
 				return finalValue;
 			}
 		} else if (kind === 'Copy' && finalValue instanceof Environment) {
-			// 复制一个集合，实际上是创建一个“视图”
+			// 复制一个纸箱，实际上是创建一个“视图”
 			finalValue = finalValue.createShallowCopy();
 		}
 		finalTargetScope.variables.set(finalTargetName, { value: finalValue, moved: false });
@@ -89,25 +89,44 @@ export class Environment {
 			value: { isReference: true, scope: targetScope, name: targetName },
 			moved: false,
 		});
-		this.orderedVariableNames.push(name);// 确保引用也被添加到有序列表中
+		this.orderedVariableNames.push(name); // 确保引用也被添加到有序列表中
 	}
 
-	public lookup(name: string | number): VariableReference {
+	public lookup(name: string | number, _originalName?: string): VariableReference {
 		let resolvedName = '';
+
+		// 1. 解析当前要查找的名字
 		if (typeof name === 'number') {
-			if (name < 1 || name > this.orderedVariableNames.length) throw new Error(`喵呜！找不到索引为 ${name} 的玩具！`);
+			if (name < 1 || name > this.orderedVariableNames.length) throw new Error(`喵呜！找不到索引为 ${name} 的玩具喵！`);
 			resolvedName = this.orderedVariableNames[name - 1]!;
 		} else {
 			resolvedName = name as string;
 		}
 
+		// 2. 确定“源头”名字
+		// 如果 _originalName 未定义, 说明这是查询的第一环, “源头”就是刚解析出的名字
+		const originalName = _originalName ?? resolvedName;
+
+		// 3. 查找符号
 		const scope = this.findVariableScope(resolvedName);
-		if (!scope) throw new Error(`咦？没找到叫做「${resolvedName}」的玩具，是不是被你藏起来了？`);
+		if (!scope) throw new Error(`咦？没找到叫做「${resolvedName}」的玩具，是不是被你藏起来了喵？`);
 		const variable = scope.variables.get(resolvedName)!;
-		if (variable.moved) throw new Error(`喵呜！变量「${resolvedName}」里的东西已经被拿走了，现在是只空碗！`);
+
+		// 4. 检查“已移动”状态
+		if (variable.moved) {
+			// 抛出带有“起点”和“终点”的详细错误
+			if (originalName === resolvedName) {
+				// 如果起点和终点是同一个，说明没有复杂的引用链
+				throw new Error(`喵呜！变量「${originalName}」里的东西被拿走了，现在是只空碗喵！`);
+			} else {
+				// 如果不同，说明有关联
+				throw new Error(`喵呜！碰不到「${originalName}」，因为它的本体「${resolvedName}」被拿走了喵！`);
+			}
+		}
 		logger.debug(`[ENV #${this.id}] LOOKUP: '${resolvedName}'. Found in Env #${scope.id}.`);
 
-		if (variable.value?.isReference) return variable.value.scope.lookup(variable.value.name);
+		// 5. 递归查找（继续传递 originalName）
+		if (variable.value?.isReference) return variable.value.scope.lookup(variable.value.name, originalName);
 
 		return { isVariableReference: true, scope: scope, name: resolvedName, value: variable.value };
 	}
@@ -138,6 +157,54 @@ export class Environment {
 			const originalVarRef = this.lookup(varName);
 			newEnv.declareReference(varName, originalVarRef.scope, originalVarRef.name);
 		}
+		return newEnv;
+	}
+
+	/**
+	 * 创建一个“合并视图”。
+	 * 将创建一个新纸箱，该纸箱按顺序包含来自 A (this) 和 B (other) 的所有引用。
+	 * 自动生成的键（}auto_{）会被重命名以保证顺序。
+	 * 用户定义的键如果冲突，A 优先。
+	 */
+	public createMergedView(other: Environment): Environment {
+		const newEnv = new Environment(this.parent);
+		const addedKeys = new Set<string>();
+		let autoIndexCounter = 0; // 为新视图创建全新的自动索引
+
+		const isAutoKey = (key: string) => key.startsWith('}auto_');
+
+		// 1. 添加来自 A (this) 的所有引用
+		for (const varName of this.orderedVariableNames) {
+			const originalVarRef = this.lookup(varName);
+
+			if (isAutoKey(varName)) {
+				// 重命名自动键
+				const newAutoKey = `}auto_${autoIndexCounter++}{`;
+				newEnv.declareReference(newAutoKey, originalVarRef.scope, originalVarRef.name);
+			} else {
+				// 添加用户定义的键
+				newEnv.declareReference(varName, originalVarRef.scope, originalVarRef.name);
+				addedKeys.add(varName);
+			}
+		}
+
+		// 2. 添加来自 B (other) 的引用
+		for (const varName of other.orderedVariableNames) {
+			const originalVarRef = other.lookup(varName);
+
+			if (isAutoKey(varName)) {
+				// 总是添加并重命名自动键
+				const newAutoKey = `}auto_${autoIndexCounter++}{`;
+				newEnv.declareReference(newAutoKey, originalVarRef.scope, originalVarRef.name);
+			} else {
+				// 用户定义的键，检查冲突
+				if (!addedKeys.has(varName)) {
+					newEnv.declareReference(varName, originalVarRef.scope, originalVarRef.name);
+					addedKeys.add(varName);
+				}
+			}
+		}
+
 		return newEnv;
 	}
 }

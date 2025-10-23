@@ -165,28 +165,49 @@ class SymbolAnalyzer {
 	}
 
 	private visitVariableDeclaration(node: AST.VariableDeclaration) {
-		let inferredType = typeMap.null; // 默认是空碗
-		// 如果有初始化部分，就从初始化表达式中推断类型
+		let inferredType = typeMap.null;
+		let valueRef: SymbolInfo | undefined; // 存储引用的符号
+
 		if (node.initialization) {
-			inferredType = this.inferExpressionType(node.initialization.value);
-			this.visit(node.initialization.value); // 继续遍历子节点
+			const init = node.initialization;
+			inferredType = this.inferExpressionType(init.value);
+			this.visit(init.value);
 
-			// 处理所有权转移
-			if (node.initialization.kind === 'Move' && node.initialization.value.type === 'Identifier') {
-				this.markAsMoved(node.initialization.value.symbol);
+			// 只有 '就是' (Reference) 才创建静态引用链
+			// '才是' (Move) 和 '就像' (Copy) 不创建引用链
+			if (init.kind === 'Reference' && init.value.type === 'Identifier') {
+				valueRef = this.lookup(init.value.symbol, false);
 			}
-		}
 
-		// 声明符号
-		this.declare(node.identifier.symbol, 'variable', inferredType, node.identifier);
+			if (init.kind === 'Move' && init.value.type === 'Identifier') this.markAsMoved(init.value.symbol);
+		}
+		this.declare(node.identifier.symbol, 'variable', inferredType, node.identifier, valueRef);
 	}
 
 	private visitAssignmentStatement(node: AST.AssignmentStatement) {
-		this.visit(node.assignee); // 现在 assignee 是一个表达式，直接 visit 即可
 		this.visit(node.value);
-		if (node.kind === 'Move' && node.value.type === 'Identifier') {
-			this.markAsMoved(node.value.symbol);
+		const valueType = this.inferExpressionType(node.value);
+
+		this.visit(node.assignee);
+
+		if (node.assignee.type === 'Identifier') {
+			const varName = node.assignee.symbol;
+			const symbol = this.lookup(varName, false); // 查找原始符号（不追踪链）
+
+			if (symbol) {
+				symbol.type = valueType;
+
+				// 只有 '就是' (Reference) 才更新静态引用链
+				if (node.kind === 'Reference' && node.value.type === 'Identifier') {
+					symbol.valueRef = this.lookup(node.value.symbol, false);
+				} else {
+					// '才是' (Move) 和 '就像' (Copy) 会打断旧的引用链
+					symbol.valueRef = undefined;
+				}
+			}
 		}
+
+		if (node.kind === 'Move' && node.value.type === 'Identifier') this.markAsMoved(node.value.symbol);
 	}
 
 	private visitBinaryExpression(node: AST.BinaryExpression | AST.LogicalExpression) {
@@ -199,7 +220,12 @@ class SymbolAnalyzer {
 		// 看不懂不说话喵
 		if (leftType === typeMap.unknown || rightType === typeMap.unknown) return;
 		if (['+', '>', '<', '>=', '<='].includes(op)) {
-			if (leftType === rightType && (leftType === typeMap.number || leftType === typeMap.string)) return;
+			if (
+				leftType === rightType &&
+				(leftType === typeMap.number || leftType === typeMap.string || (leftType === typeMap.collection && op === '+'))
+			) {
+				return;
+			}
 			this.errors.push({
 				message: `'${op}' 操作符不能用于 '${leftType}' 和 '${rightType}' 之间喵!`,
 				line: node.line!,
@@ -216,9 +242,10 @@ class SymbolAnalyzer {
 	}
 
 	private visitIdentifier(node: AST.Identifier) {
-		const symbol = this.lookup(node.symbol);
+		const symbol = this.lookup(node.symbol); // 默认 resolveChain = true
 		if (symbol) {
 			if (symbol.isMoved) {
+				// 这个 isMoved 状态是经过传播的
 				this.errors.push({
 					message: `使用了已经被移走的变量 '${node.symbol}'，它的碗是空的喵！`,
 					line: node.line!,
@@ -233,8 +260,15 @@ class SymbolAnalyzer {
 	}
 
 	private markAsMoved(name: string) {
-		const symbol = this.lookup(name);
-		if (symbol) symbol.isMoved = true;
+		// 查找原始符号
+		const symbolToMove = this.lookup(name, false);
+
+		if (symbolToMove) {
+			// 追踪引用链到末端，并标记“已移动”
+			let finalSymbol = symbolToMove;
+			while (finalSymbol.valueRef) finalSymbol = finalSymbol.valueRef;
+			finalSymbol.isMoved = true;
+		}
 	}
 
 	private enterScope() {
@@ -245,7 +279,13 @@ class SymbolAnalyzer {
 	private leaveScope() {
 		this.currentScope = this.currentScope.parent!;
 	}
-	private declare(name: string, kind: SymbolInfo['kind'], type: MeaoiuType, declarationNode: AST.AstNode) {
+	private declare(
+		name: string,
+		kind: SymbolInfo['kind'],
+		type: MeaoiuType,
+		declarationNode: AST.AstNode,
+		valueRef?: SymbolInfo
+	) {
 		if (this.currentScope.symbols.has(name)) {
 			this.errors.push({
 				message: `名字 '${name}' 已经被定义过了喵！`,
@@ -254,15 +294,37 @@ class SymbolAnalyzer {
 			});
 			return;
 		}
-		this.currentScope.symbols.set(name, { name, kind, type, declarations: [declarationNode], references: [] });
+		// 存储 valueRef
+		this.currentScope.symbols.set(name, { name, kind, type, declarations: [declarationNode], references: [], valueRef });
 	}
-	private lookup(name: string): SymbolInfo | undefined {
+	private lookup(name: string, resolveChain: boolean = true): SymbolInfo | undefined {
+		// 1. 在作用域中找到该名字的“第一环”
 		let s: Scope | undefined = this.currentScope;
+		let foundSymbol: SymbolInfo | undefined;
 		while (s) {
-			if (s.symbols.has(name)) return s.symbols.get(name);
+			if (s.symbols.has(name)) {
+				foundSymbol = s.symbols.get(name);
+				break;
+			}
 			s = s.parent;
 		}
-		return undefined;
+		if (!foundSymbol) return undefined;
+
+		// 2. 如果不需要追踪链（比如在声明时），直接返回
+		if (!resolveChain) return foundSymbol;
+
+		// 3. 追踪引用链，检查整条链上的“已移动”状态
+		let current: SymbolInfo | undefined = foundSymbol;
+		while (current) {
+			if (current.isMoved) {
+				// 为了缓存，把“第一环”也标记为已移动
+				foundSymbol.isMoved = true;
+				break;
+			}
+			current = current.valueRef;
+		}
+
+		return foundSymbol;
 	}
 }
 

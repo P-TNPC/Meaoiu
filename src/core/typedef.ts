@@ -2,7 +2,7 @@
 
 import { Environment } from "./run/environment.js";
 
-export type MeaoiuType = '摸数' | '闲话' | '好坏' | '空碗' | '计谋' | '集合' | '不懂';
+export type MeaoiuType = '摸数' | '闲话' | '好坏' | '空碗' | '计谋' | '纸箱' | '不懂';
 
 // 定义严格的映射对象类型
 type TypeMapKey = 'number' | 'string' | 'boolean' | 'null' | 'function' | 'collection' | 'unknown';
@@ -14,7 +14,7 @@ export const typeMap: StrictTypeMap = {
 	boolean: '好坏',
 	null: '空碗',
 	function: '计谋',
-	collection: '集合',
+	collection: '纸箱',
 	unknown: '不懂',
 } as const;
 

@@ -1,7 +1,7 @@
 // src/core/builtIns.ts
 
 import type { MeaoiuRuntimeIO } from './run/io.js';
-import { getMeaoiuType } from './typedef.js';
+import { getMeaoiuType, typeMap } from './typedef.js';
 
 export const builtInFunctionNames = [
 	'喵',
@@ -53,8 +53,12 @@ export const createBuiltInFunctions = (io: MeaoiuRuntimeIO): BuiltInFunctions =>
 	吃剩的: args => Math.min(...args),
 	摸余: args => args[0] % args[1],
 
+	// Collection & String
+	找尾巴: args => {
+		const target = args[0];
+		return getMeaoiuType(target) === typeMap.collection ? target.orderedVariableNames.length : String(target).length;
+	},
 	// String
-	找尾巴: args => String(args[0]).length,
 	喵语连珠: args => args.map(String).join(''),
 
 	// Thematic & Time
@@ -82,3 +86,13 @@ export const createBuiltInFunctions = (io: MeaoiuRuntimeIO): BuiltInFunctions =>
 		throw new Error(...args);
 	},
 });
+
+// function paramsCheck(args: any[], typesList: MeaoiuType[][]) {
+// 	if (args.length < typesList.length) throw new Error(`只给 ${args.length} 个贡品不够喵！需要 ${typesList.length} 个`);
+// 	for (let i = 0; i < typesList.length; i++) {
+// 		const arg = args[i];
+// 		const types = typesList[i]!;
+// 		const type = getMeaoiuType(arg);
+// 		if (!types.includes(type)) throw new Error(`第 ${i + 1} 个贡品 ${arg} 是 ${type}，需要 ${types.join(' 或 ')}`);
+// 	}
+// }

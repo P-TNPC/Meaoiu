@@ -530,7 +530,7 @@ export class Parser {
 
 	private parseBlockStatement(isCollection: boolean = false): AST.BlockStatement {
 		const startToken = isCollection
-			? this.expect('PARAM_START', '集合或参数列表需要以 [= 开头喵')
+			? this.expect('PARAM_START', '纸箱或参数列表需要以 [= 开头喵')
 			: this.expect('BLOCK_START', '想法需要以 [# 开头喵');
 
 		const body: AST.Statement[] = [];
@@ -538,7 +538,7 @@ export class Parser {
 
 		const endTokenType = isCollection ? 'PARAM_END' : 'BLOCK_END';
 		const separatorTokenType = isCollection ? 'COMMA' : 'TERMINATOR';
-		const blockName = isCollection ? '集合' : '想法';
+		const blockName = isCollection ? '纸箱' : '想法';
 
 		while (this.current().type !== endTokenType && this.current().type !== 'EOF') {
 			if (isCollection) {
@@ -888,8 +888,13 @@ export class Parser {
 				this.position--; // 把指针拨回去，让 parseLoopStatement 处理
 				return this.parseLoopStatement();
 			default:
+				let errMsg = `看不懂的把戏喵: ${t.value}`;
+				if (t.type === 'TERMINATOR') {
+					this.position--;
+					errMsg = '只说半句看不懂喵';
+				}
 				// 未知 token：在 strict 模式抛；在 tolerant 模式生成 ErrorNode 并至少前进一个 token
-				const err = new Error(`[${t.line}:${t.col}] 不认识的把戏喵: ${t.value}`);
+				const err = new Error(`[${t.line}:${t.col}] 语法错误喵: ${errMsg}`);
 				if (this.mode === 'tolerant') {
 					const se = this.formatError(err);
 					this.errors.push(se);

@@ -39,13 +39,37 @@ export type TokenType =
 	| 'LOGIC_CLOSE_NOR'
 	| 'COMMENT';
 
-export const KEYWORDS: Record<string, TokenType> = {
+export type Keyword =
+	| '蹭'
+	| '就是'
+	| '就像'
+	| '高仿'
+	| '才是'
+	| '抢走'
+	| '好不好?'
+	| '不然'
+	| '玩耍'
+	| '累了'
+	| '想要'
+	| '扒'
+	| '叼回来'
+	| '好喵'
+	| '坏喵'
+	| '空碗'
+	| '和'
+	| '或'
+	| '都好'
+	| '有好'
+	| '都坏'
+	| '有坏';
+
+export const KEYWORDS: Record<Keyword, TokenType> = {
 	蹭: 'KEYWORD_USE',
 	就是: 'KEYWORD_IS',
 	就像: 'KEYWORD_LIKE',
 	高仿: 'KEYWORD_CLONE',
-	才是: 'KEYWORD_MOVE_ASSIGN', // 新增
-	抢走: 'KEYWORD_SNATCH', // 新增
+	才是: 'KEYWORD_MOVE_ASSIGN',
+	抢走: 'KEYWORD_SNATCH',
 	'好不好?': 'KEYWORD_CONFIRM',
 	不然: 'KEYWORD_ELSE',
 	玩耍: 'KEYWORD_LOOP',
@@ -63,6 +87,7 @@ export const KEYWORDS: Record<string, TokenType> = {
 	都坏: 'LOGIC_CLOSE_NOR',
 	有坏: 'LOGIC_CLOSE_NAND',
 } as const;
+const sortedKeywords = Object.keys(KEYWORDS).sort((a, b) => b.length - a.length) as Keyword[];
 
 export interface Token {
 	type: TokenType;
@@ -88,7 +113,6 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 	let line = 1;
 	let col = 1;
 	let cursor = 0;
-	const sortedKeywords = Object.keys(KEYWORDS).sort((a, b) => b.length - a.length);
 
 	while (cursor < sourceCode.length) {
 		const startLine = line;
@@ -138,7 +162,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 		}
 
 		const remainingCode = sourceCode.substring(cursor);
-		let matchedKeyword = '';
+		let matchedKeyword: Keyword | undefined;
 		for (const keyword of sortedKeywords) {
 			if (remainingCode.startsWith(keyword)) {
 				matchedKeyword = keyword;
@@ -146,7 +170,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 			}
 		}
 		if (matchedKeyword) {
-			const tokenType = KEYWORDS[matchedKeyword]!;
+			const tokenType = KEYWORDS[matchedKeyword];
 			tokens.push({ type: tokenType, value: matchedKeyword, line: startLine, col: startCol });
 			advance(matchedKeyword.length);
 
@@ -214,7 +238,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 				identifierStartCol = col;
 
 				while (cursor < sourceCode.length && sourceCode[cursor] !== '}') {
-					identifier += sourceCode[cursor]!;
+					identifier += sourceCode[cursor];
 					advance();
 				}
 				advance(); // 跳过 '}'
@@ -233,14 +257,14 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 						}
 					}
 					if (isKeywordAhead) break;
-					identifier += sourceCode[cursor]!;
+					identifier += sourceCode[cursor];
 					advance();
 				}
 			}
 
 			// 最后，统一创建 Token
 			if (identifier) {
-				tokens.push({ type: 'IDENTIFIER', value: identifier, line: identifierStartLine!, col: identifierStartCol! });
+				tokens.push({ type: 'IDENTIFIER', value: identifier, line: identifierStartLine, col: identifierStartCol });
 				if (expectingFuncNameAfterParamEnd) {
 					// 抓到了！这个标识符就是函数名喵！
 					functionNames.add(identifier);
@@ -259,7 +283,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 }
 
 /**
- * 遍历原始 Token 列表，修复被错误合并的 `扒集合名函数名`。
+ * 遍历原始 Token 列表，修复被错误合并的 `扒纸箱名函数名`。
  */
 function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] {
 	// 为了最高效的匹配，按长度降序排序
@@ -281,7 +305,7 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 			nextToken.type === 'IDENTIFIER' && // 后面跟着一个标识符
 			!(nextNextToken && nextNextToken.type === 'IDENTIFIER') // 后面无跟着的第二个标识符
 		) {
-			// 找到了一个潜在目标，例如 '扒 集合名函数名 ~'
+			// 找到了一个潜在目标，例如 '扒 纸箱名函数名 ~'
 			const tokenToSplit = nextToken;
 			let foundSplit = false;
 
@@ -291,7 +315,7 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 					// 找到了！是它喵！
 					const collectionName = tokenToSplit.value.substring(0, tokenToSplit.value.length - funcName.length);
 
-					// 1. 创建“集合名” Token
+					// 1. 创建“纸箱名” Token
 					const collectionToken: Token = {
 						type: 'IDENTIFIER',
 						value: collectionName,
@@ -309,10 +333,10 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 
 					// 3. 将修复后的 Token 推入
 					repairedTokens.push(currentToken); // 扒
-					repairedTokens.push(collectionToken); // 集合名
+					repairedTokens.push(collectionToken); // 纸箱名
 					repairedTokens.push(functionToken); // 函数名
 
-					i += 2; // 跳过 '扒' 和 '集合名函数名' 这两个原始 Token
+					i += 2; // 跳过 '扒' 和 '纸箱名函数名' 这两个原始 Token
 					foundSplit = true;
 					break; // 匹配成功，停止搜索
 				}
@@ -324,7 +348,7 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 				i++;
 			}
 		} else {
-			// 不是需要修复的目标，或者是一个安全的 `扒 集合名 函数名`
+			// 不是需要修复的目标，或者是一个安全的 `扒 纸箱名 函数名`
 			repairedTokens.push(currentToken);
 			i++;
 		}
