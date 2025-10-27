@@ -25,7 +25,7 @@ program
 	.option('--hover <line:col>', "悬停信息，格式 '行:列'")
 	.option('--complete <line:col>', "获取自动补全，格式 '行:列'")
 	.description('Meaoiu 语言工具集 — 运行、诊断、格式化、查定义/引用、补全')
-	.action(async (file: string, options: any) => {
+	.action(async (file: string, options: Record<string, string>) => {
 		try {
 			const sourceCode = fs.readFileSync(file, 'utf-8');
 

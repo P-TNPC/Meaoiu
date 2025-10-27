@@ -8,10 +8,10 @@ import type * as AST from '../../core/ast.js';
  * @param line 行号 (1-based)
  * @param col 列号 (1-based)
  */
-export function findIdentifierAt(ast: AST.AstNode, line: number, col: number): AST.Identifier | undefined {
+export function findIdentifierAt(ast: AST.Node, line: number, col: number): AST.Identifier | undefined {
 	let found: AST.Identifier | undefined;
 
-	function walk(node: AST.AstNode | undefined) {
+	function walk(node: AST.Node | undefined) {
 		if (!node || found) return;
 
 		// 检查当前节点是否是我们要找的目标
@@ -33,7 +33,7 @@ export function findIdentifierAt(ast: AST.AstNode, line: number, col: number): A
 
 			const value = (node as any)[key];
 			if (Array.isArray(value)) value.forEach(child => walk(child));
-			else if (value?.type && typeof value === 'object') walk(value);
+			else if (value?.type) walk(value);
 		}
 	}
 

@@ -100,7 +100,7 @@ export class Environment {
 			if (name < 1 || name > this.orderedVariableNames.length) throw new Error(`喵呜！找不到索引为 ${name} 的玩具喵！`);
 			resolvedName = this.orderedVariableNames[name - 1]!;
 		} else {
-			resolvedName = name as string;
+			resolvedName = name;
 		}
 
 		// 2. 确定“源头”名字
@@ -206,5 +206,18 @@ export class Environment {
 		}
 
 		return newEnv;
+	}
+
+	/**
+	 * 检查当前环境是否严格位于 ancestor 的“内部”。
+	 */
+	public isInsideOf(ancestor: Environment | undefined): boolean {
+		if (!ancestor) return false;
+		let current: Environment | undefined = this;
+		while (current) {
+			if (current === ancestor) return true;
+			current = current.parent;
+		}
+		return false;
 	}
 }

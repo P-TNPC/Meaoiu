@@ -7,7 +7,7 @@ import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
 import { findIdentifierAt } from './utils/astUtils.js';
 
-export function findReferences(sourceCode: string, position: { line: number; col: number }): AST.AstNode[] {
+export function findReferences(sourceCode: string, position: { line: number; col: number }): AST.Node[] {
 	const parser = new Parser(tokenize(sourceCode, { ignoreComments: true }), 'tolerant');
 	const { program: ast } = parser.parse();
 	if (!ast) return [];

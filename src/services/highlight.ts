@@ -18,13 +18,14 @@ export function getHighlightTokens(sourceCode: string) {
 
 	const { program: ast } = new Parser(tokenize(sourceCode, { ignoreComments: true }), 'tolerant').parse();
 	const { symbolMap } = analyzeSymbols(ast, builtInFunctionNames);
-	const parentMap = new Map<AST.AstNode, AST.AstNode>();
-	function buildParentMap(node: AST.AstNode, parent?: AST.AstNode) {
+	const parentMap = new Map<AST.Node, AST.Node>();
+	function buildParentMap(node: AST.Node, parent?: AST.Node) {
 		if (parent) parentMap.set(node, parent);
+
 		for (const key in node) {
 			const value = (node as any)[key];
 			if (Array.isArray(value)) value.forEach(child => buildParentMap(child, node));
-			else if (value && typeof value === 'object' && value.type) buildParentMap(value, node);
+			else if (value?.type) buildParentMap(value, node);
 		}
 	}
 	buildParentMap(ast);
@@ -36,9 +37,7 @@ export function getHighlightTokens(sourceCode: string) {
 		// 收集声明
 		symbolInfo.declarations.forEach(dec => {
 			const modifiers = [tokenModifiers.indexOf('declaration')];
-			if (symbolInfo.isBuiltIn) {
-				modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
-			}
+			if (symbolInfo.isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
 			const modBitmask = modifiers.reduce((a, b) => a | (1 << b), 0);
 			highlightTokens.push({
 				line: dec.line! - 1,
@@ -52,15 +51,10 @@ export function getHighlightTokens(sourceCode: string) {
 		// 收集引用
 		symbolInfo.references.forEach(ref => {
 			const modifiers = [];
-			if (symbolInfo.isBuiltIn) {
-				modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
-			}
-			// 如果符号已被移走，就为这次引用添加'deprecated'修饰符
-			if (symbolInfo.isMoved) {
-				modifiers.push(tokenModifiers.indexOf('deprecated'));
-			}
+			if (symbolInfo.isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
+			if (symbolInfo.isMoved) modifiers.push(tokenModifiers.indexOf('deprecated'));
 			const parent = parentMap.get(ref);
-			if (parent && parent.type === 'AssignmentStatement' && (parent as AST.AssignmentStatement).assignee === ref) {
+			if (parent?.type === 'AssignmentStatement' && parent.assignee === ref) {
 				modifiers.push(tokenModifiers.indexOf('modification'));
 			}
 			const modBitmask = modifiers.reduce((a, b) => a | (1 << b), 0);

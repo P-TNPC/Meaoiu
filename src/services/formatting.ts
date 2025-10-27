@@ -1,7 +1,7 @@
 // src/services/formatting.ts
 
 import type * as AST from '../core/ast.js';
-import { tokenize, KEYWORDS, type Keyword } from '../core/tokenizer.js';
+import { tokenize, isKeyword } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
 
 interface FormattingOptions {
@@ -10,9 +10,6 @@ interface FormattingOptions {
 }
 function indent(options: FormattingOptions): string {
 	return options.indentChar.repeat(options.level);
-}
-function isKeyword(symbol: string): symbol is Keyword {
-	return symbol in KEYWORDS;
 }
 
 function printLeadingComments(node: AST.Node, options: FormattingOptions): string {
@@ -133,6 +130,11 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			content = `${indent(options)}叼回来${a ? ` ${printNodeContent(a, options)}` : ''}`;
 			break;
 		}
+		case 'AmbushStatement': {
+			const a = node.argument;
+			content = `${indent(options)}偷袭${a ? ` ${printNodeContent(a, options)}` : ''}`;
+			break;
+		}
 		case 'BreakStatement': {
 			content = `${indent(options)}累了`;
 			break;
@@ -197,9 +199,9 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			content = printNodeContent(n.expression, options);
 			break;
 		}
-		// default: // 此处已推断为不可达
-		// console.warn(`[格式化器] [${node.line}:${node.col}]目前无法整理此类节点: ${node.type}`);
-		// content = '';
+		default: // 此处已推断为不可达
+			console.warn(`[格式化器] 目前无法整理此类节点: `, node);
+			content = '';
 	}
 
 	return leading + content;

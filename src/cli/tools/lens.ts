@@ -7,10 +7,7 @@ import { parsePosition } from './toolUtils.js';
 
 export function definition(sourceCode: string, posRaw: string, filePath: string) {
 	const pos = parsePosition(posRaw);
-	if (!pos) {
-		console.error("位置参数格式错误，应为 '行:列'，例如 '2:3'");
-		return;
-	}
+
 	const definitionInfo = findDefinition(sourceCode, pos);
 	if (definitionInfo?.declarations?.[0]) {
 		const defNode = definitionInfo.declarations[0];
@@ -22,10 +19,7 @@ export function definition(sourceCode: string, posRaw: string, filePath: string)
 
 export function references(sourceCode: string, posRaw: string, filePath: string) {
 	const pos = parsePosition(posRaw);
-	if (!pos) {
-		console.error("位置参数格式错误，应为 '行:列'，例如 '2:3'");
-		return;
-	}
+
 	const references = findReferences(sourceCode, pos);
 	if (references?.length) {
 		console.log(`[引用查找] 在 ${filePath} 中找到了 ${references.length} 处引用:`);
@@ -37,10 +31,7 @@ export function references(sourceCode: string, posRaw: string, filePath: string)
 
 export function hover(sourceCode: string, posRaw: string) {
 	const pos = parsePosition(posRaw);
-	if (!pos) {
-		console.error("位置参数格式错误，应为 '行:列'，例如 '2:3'");
-		return;
-	}
+
 	const hoverInfo = getHoverInfo(sourceCode, pos);
 	if (hoverInfo) {
 		console.log('---- 悬停信息 ----');

@@ -17,9 +17,9 @@ export async function run(sourceCode: string, builtIns: BuiltInFunctions, filePa
 		const parser = new Parser(tokens);
 		const { program: ast } = parser.parse();
 		const globalEnv = new Environment();
-		await evaluate(ast, globalEnv, builtIns);
-	} catch (e: any) {
-		console.error(formatError(e, sourceCode, filePath));
+		await evaluate(ast, globalEnv, builtIns, {});
+	} catch (err) {
+		console.error(formatError(err, sourceCode, filePath));
 	}
 	console.log('=============================\n');
 }

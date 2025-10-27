@@ -58,11 +58,8 @@ export class Parser {
 
 		// 返回当前非悄悄话 token（或 EOF）
 		const prev = this.tokens[this.position]!;
-		if (this.position < this.tokens.length - 1) {
-			this.position++;
-		} else {
-			this.position = this.tokens.length - 1;
-		}
+		if (this.position < this.tokens.length - 1) this.position++;
+		else this.position = this.tokens.length - 1;
 		return prev;
 	}
 
@@ -86,7 +83,7 @@ export class Parser {
 	// 把缓存里的悄悄话按是否与 anchorToken 同一行分离：
 	// - 同行的视为 trailing，附给 node
 	// - 不同的保留为未来节点的 leading（放回 commentBuffer）
-	private collectTrailingComments(node: AST.AstNode, anchorToken: Token | undefined): void {
+	private collectTrailingComments(node: AST.Node, anchorToken: Token | undefined): void {
 		if (!anchorToken) return;
 		// 先把当前位置开始的悄悄话也收进缓存（保证没有漏掉）
 		this.drainCommentsAhead();
@@ -103,8 +100,8 @@ export class Parser {
 		}
 
 		if (trailing.length) {
-			(node as any).trailingComments = (node as any).trailingComments ?? [];
-			(node as any).trailingComments.push(...trailing);
+			node.trailingComments = node.trailingComments ?? [];
+			node.trailingComments.push(...trailing);
 		}
 
 		// 将非 trailing 的悄悄话保留为新的 commentBuffer
@@ -177,7 +174,7 @@ export class Parser {
 
 		// 如果文件结束后仍有悄悄话缓存在 buffer，把它当成最后一个语句的 trailing（如果存在）
 		if (this.commentBuffer.length > 0 && program.body.length > 0) {
-			const last = program.body[program.body.length - 1] as any;
+			const last = program.body[program.body.length - 1]!;
 			last.trailingComments = (last.trailingComments ?? []).concat(this.commentBuffer);
 			this.commentBuffer = [];
 		}
@@ -199,9 +196,7 @@ export class Parser {
 				return;
 			}
 
-			if (this.isStatementStart(currentType)) {
-				return;
-			}
+			if (this.isStatementStart(currentType)) return;
 
 			if (currentType === 'BLOCK_END') {
 				if (this.blockDepth > 0) return;
@@ -230,9 +225,7 @@ export class Parser {
 			moved = true;
 		}
 		// 若什么也没跳过，则至少前进一个 token，避免卡住
-		if (!moved && this.current().type !== 'EOF') {
-			this.advance();
-		}
+		if (!moved && this.current().type !== 'EOF') this.advance();
 	}
 
 	private isStatementStart(type: TokenType): boolean {
@@ -244,7 +237,7 @@ export class Parser {
 			'KEYWORD_CALL',
 			'KEYWORD_BREAK',
 			'BLOCK_START',
-		].includes(type as string);
+		].includes(type);
 	}
 
 	private formatError(e: Error): SyntaxError {
@@ -292,9 +285,7 @@ export class Parser {
 			...this.endLoc(t),
 		};
 
-		if (leading.length) {
-			(node as any).leadingComments = leading;
-		}
+		if (leading.length) node.leadingComments = leading;
 		return node;
 	}
 
@@ -308,7 +299,7 @@ export class Parser {
 		if (
 			this.current().type === 'KEYWORD_IS' ||
 			this.current().type === 'KEYWORD_LIKE' ||
-			this.current().type === 'KEYWORD_MOVE_ASSIGN'
+			this.current().type === 'KEYWORD_ONLY'
 		) {
 			initialization = this.parseAssignmentStatement(identifier);
 		}
@@ -359,6 +350,9 @@ export class Parser {
 				case 'KEYWORD_RETURN':
 					s = this.parseReturnStatement();
 					break;
+				case 'KEYWORD_AMBUSH':
+					s = this.parseAmbushStatement();
+					break;
 				case 'KEYWORD_BREAK':
 					this.advance();
 					s = {
@@ -376,7 +370,7 @@ export class Parser {
 					if (
 						this.current().type === 'KEYWORD_IS' ||
 						this.current().type === 'KEYWORD_LIKE' ||
-						this.current().type === 'KEYWORD_MOVE_ASSIGN'
+						this.current().type === 'KEYWORD_ONLY'
 					) {
 						s = this.parseAssignmentStatement(expr); // 将解析好的表达式作为“被赋值者”传入
 					} else {
@@ -387,40 +381,31 @@ export class Parser {
 			const termTok = this.expect('TERMINATOR', "每个语句的最后都需要一个 '~' 结尾喵!");
 
 			if (leading.length) {
-				(s as any).leadingComments = (s as any).leadingComments ?? [];
-				(s as any).leadingComments.push(...leading);
+				s.leadingComments = s.leadingComments ?? [];
+				s.leadingComments.push(...leading);
 			}
 			// 收集并分配 terminator 后面的悄悄话（同一行视为 trailing）
-			this.collectTrailingComments(s as any, termTok);
+			this.collectTrailingComments(s, termTok);
 			return s;
 		} catch (e: any) {
-			if (this.mode === 'tolerant') {
-				const error = this.formatError(e);
-				this.errors.push(error);
-				this.synchronize();
-				return this.createErrorNode(error);
-			} else {
-				throw e;
-			}
+			if (this.mode !== 'tolerant') throw e;
+			const error = this.formatError(e);
+			this.errors.push(error);
+			this.synchronize();
+			return this.createErrorNode(error);
 		}
 	}
 
 	private parseAssignmentStatement(assignee: AST.Expression): AST.AssignmentStatement {
 		const aT = this.advance();
-		let k: AST.AssignmentKind;
+		const assignMap: Partial<Record<TokenType, AST.AssignmentKind>> = {
+			KEYWORD_IS: 'Reference',
+			KEYWORD_LIKE: 'Copy',
+			KEYWORD_ONLY: 'Move',
+		};
 
-		if (aT.type === 'KEYWORD_IS') {
-			// 就是
-			k = 'Reference';
-		} else if (aT.type === 'KEYWORD_LIKE') {
-			// 就像
-			k = 'Copy';
-		} else if (aT.type === 'KEYWORD_MOVE_ASSIGN') {
-			// 才是
-			k = 'Move';
-		} else {
-			throw new Error(`[${aT.line}:${aT.col}] 语法错误喵: 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
-		}
+		const k = assignMap[aT.type];
+		if (!k) throw new Error(`[${aT.line}:${aT.col}] 语法错误喵: 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
 
 		const v = this.parseExpression();
 		const eL = this.endLoc();
@@ -446,18 +431,16 @@ export class Parser {
 			peekPos++;
 		} while (braceCount > 0 && peekPos < this.tokens.length);
 
-		if (this.tokens[peekPos]?.type === 'KEYWORD_CONFIRM') {
-			return this.parseInvertedIfStatement();
-		} else {
-			const blockExpr = this.parseBlockStatement();
-			return {
-				type: 'ExpressionStatement',
-				expression: blockExpr,
-				line: startToken.line,
-				col: startToken.col,
-				...this.endLoc(),
-			};
-		}
+		if (this.tokens[peekPos]?.type === 'KEYWORD_CONFIRM') return this.parseInvertedIfStatement();
+
+		const blockExpr = this.parseBlockStatement();
+		return {
+			type: 'ExpressionStatement',
+			expression: blockExpr,
+			line: startToken.line,
+			col: startToken.col,
+			...this.endLoc(),
+		};
 	}
 
 	private parseInvertedIfStatement(): AST.IfStatement {
@@ -479,11 +462,8 @@ export class Parser {
 					pP++;
 				} while (bC > 0 && pP < this.tokens.length);
 
-				if (this.tokens[pP]?.type === 'KEYWORD_CONFIRM') {
-					alternate = this.parseInvertedIfStatement();
-				} else {
-					alternate = this.parseBlockStatement();
-				}
+				if (this.tokens[pP]?.type === 'KEYWORD_CONFIRM') alternate = this.parseInvertedIfStatement();
+				else alternate = this.parseBlockStatement();
 			} else {
 				throw new Error(`[${this.current().line}:${this.current().col}] '不然' 后面必须跟着一个想法 '[#...#]' 喵!`);
 			}
@@ -521,6 +501,22 @@ export class Parser {
 
 		return {
 			type: 'ReturnStatement',
+			argument: a,
+			line: s.line,
+			col: s.col,
+			...this.endLoc(),
+		};
+	}
+
+	private parseAmbushStatement(): AST.AmbushStatement {
+		const s = this.advance();
+		let a: AST.Expression | undefined;
+
+		// 检查后面是不是直接跟了终结符
+		if (this.current().type !== 'TERMINATOR') a = this.parseExpression(); // 如果不是，说明有值
+
+		return {
+			type: 'AmbushStatement',
 			argument: a,
 			line: s.line,
 			col: s.col,
@@ -577,7 +573,7 @@ export class Parser {
 		// 模式二: 隐式声明，例如 `a 就是 1`
 		if (
 			currentType === 'IDENTIFIER' &&
-			(peekType === 'KEYWORD_IS' || peekType === 'KEYWORD_LIKE' || peekType === 'KEYWORD_MOVE_ASSIGN')
+			(peekType === 'KEYWORD_IS' || peekType === 'KEYWORD_LIKE' || peekType === 'KEYWORD_ONLY')
 		) {
 			return this.parseVariableDeclaration(true);
 		}
@@ -741,7 +737,6 @@ export class Parser {
 				...this.endLoc(),
 			};
 		}
-
 		return l;
 	}
 
@@ -762,31 +757,16 @@ export class Parser {
 				...this.endLoc(),
 			};
 		}
-
 		return l;
 	}
 
 	private parseMultiplicativeExpression(): AST.Expression {
 		let l = this.parseUnaryExpression();
 
-		while (this.current().type === 'ACCESSOR') {
-			const s = this.current();
-			this.advance(); // 消费 '@'
-			const r = this.parsePrimaryExpression();
-			l = {
-				type: 'MemberAccessExpression',
-				object: l,
-				property: r,
-				line: s.line,
-				col: s.col,
-				...this.endLoc(),
-			};
-		}
-
 		while ((this.current().value === '*' || this.current().value === '/') && this.peek().type !== 'COMMA') {
 			const s = this.current();
 			const o = this.advance().value;
-			const r = this.parsePrimaryExpression();
+			const r = this.parseUnaryExpression();
 			l = {
 				type: 'BinaryExpression',
 				left: l,
@@ -797,12 +777,32 @@ export class Parser {
 				...this.endLoc(),
 			};
 		}
+		return l;
+	}
 
+	private parseMemberAccessExpression(): AST.Expression {
+		let l = this.parsePrimaryExpression();
+
+		// 循环处理连续的 @ 访问
+		while (this.current().type === 'ACCESSOR') {
+			const s = this.current();
+			this.advance();
+
+			const r = this.parsePrimaryExpression();
+			l = {
+				type: 'MemberAccessExpression',
+				object: l,
+				property: r,
+				line: s.line,
+				col: s.col,
+				...this.endLoc(),
+			};
+		}
 		return l;
 	}
 
 	private parseUnaryExpression(): AST.Expression {
-		if (this.current().type === 'KEYWORD_CLONE' || this.current().type === 'KEYWORD_SNATCH') {
+		if (this.current().type === 'KEYWORD_CLONE' || this.current().type === 'KEYWORD_MOVE') {
 			const sT = this.advance();
 			const op: AST.UnaryOperator = sT.type === 'KEYWORD_CLONE' ? 'Copy' : 'Move';
 			// 递归调用，这样就可以处理像“高仿 高仿 a”这样的写法
@@ -817,8 +817,7 @@ export class Parser {
 				...this.endLoc(),
 			};
 		}
-
-		return this.parsePrimaryExpression();
+		return this.parseMemberAccessExpression();
 	}
 
 	private parsePrimaryExpression(): AST.Expression {
@@ -905,8 +904,8 @@ export class Parser {
 		}
 
 		if (leading.length) {
-			(node as any).leadingComments = (node as any).leadingComments ?? [];
-			(node as any).leadingComments.push(...leading);
+			node.leadingComments = node.leadingComments ?? [];
+			node.leadingComments.push(...leading);
 		}
 
 		return node;

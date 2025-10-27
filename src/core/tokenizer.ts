@@ -8,8 +8,8 @@ export type TokenType =
 	| 'KEYWORD_IS'
 	| 'KEYWORD_LIKE'
 	| 'KEYWORD_CLONE'
-	| 'KEYWORD_MOVE_ASSIGN'
-	| 'KEYWORD_SNATCH'
+	| 'KEYWORD_ONLY'
+	| 'KEYWORD_MOVE'
 	| 'KEYWORD_CONFIRM'
 	| 'KEYWORD_ELSE'
 	| 'KEYWORD_LOOP'
@@ -17,6 +17,7 @@ export type TokenType =
 	| 'KEYWORD_DEF'
 	| 'KEYWORD_CALL'
 	| 'KEYWORD_RETURN'
+	| 'KEYWORD_AMBUSH'
 	| 'NUMBER'
 	| 'STRING'
 	| 'BOOLEAN'
@@ -53,6 +54,7 @@ export type Keyword =
 	| '想要'
 	| '扒'
 	| '叼回来'
+	| '偷袭'
 	| '好喵'
 	| '坏喵'
 	| '空碗'
@@ -68,8 +70,8 @@ export const KEYWORDS: Record<Keyword, TokenType> = {
 	就是: 'KEYWORD_IS',
 	就像: 'KEYWORD_LIKE',
 	高仿: 'KEYWORD_CLONE',
-	才是: 'KEYWORD_MOVE_ASSIGN',
-	抢走: 'KEYWORD_SNATCH',
+	才是: 'KEYWORD_ONLY',
+	抢走: 'KEYWORD_MOVE',
 	'好不好?': 'KEYWORD_CONFIRM',
 	不然: 'KEYWORD_ELSE',
 	玩耍: 'KEYWORD_LOOP',
@@ -77,6 +79,7 @@ export const KEYWORDS: Record<Keyword, TokenType> = {
 	想要: 'KEYWORD_DEF',
 	扒: 'KEYWORD_CALL',
 	叼回来: 'KEYWORD_RETURN',
+	偷袭: 'KEYWORD_AMBUSH',
 	好喵: 'BOOLEAN',
 	坏喵: 'BOOLEAN',
 	空碗: 'NULL_LITERAL',
@@ -87,7 +90,10 @@ export const KEYWORDS: Record<Keyword, TokenType> = {
 	都坏: 'LOGIC_CLOSE_NOR',
 	有坏: 'LOGIC_CLOSE_NAND',
 } as const;
-const sortedKeywords = Object.keys(KEYWORDS).sort((a, b) => b.length - a.length) as Keyword[];
+export const sortedKeywords = Object.keys(KEYWORDS).sort((a, b) => b.length - a.length) as Keyword[];
+export function isKeyword(symbol: string): symbol is Keyword {
+	return symbol in KEYWORDS;
+}
 
 export interface Token {
 	type: TokenType;

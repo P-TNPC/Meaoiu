@@ -20,10 +20,7 @@ export function getHoverInfo(sourceCode: string, position: { line: number; col: 
 
 	const declaration = symbolInfo.declarations[0];
 	let hoverText = `**(${symbolInfo.kind}) ${symbolInfo.name}**`;
-	if (declaration) {
-		hoverText += `\n\n在 L${declaration.line}:${declaration.col} 处声明`;
-	} else {
-		hoverText += `\n\n(这是一个内置计谋)`;
-	}
+	if (declaration) hoverText += `\n\n在 L${declaration.line}:${declaration.col} 处声明`;
+	else hoverText += `\n\n(这是一个内置计谋)`;
 	return hoverText;
 }

@@ -13,8 +13,8 @@ export interface SemanticError {
 
 class SymbolAnalyzer {
 	public errors: SemanticError[] = [];
-	public symbolMap: Map<AST.AstNode, SymbolInfo> = new Map();
-	public nodeScopeMap: Map<AST.AstNode, Scope> = new Map();
+	public symbolMap: Map<AST.Node, SymbolInfo> = new Map();
+	public nodeScopeMap: Map<AST.Node, Scope> = new Map();
 	private currentScope: Scope;
 
 	constructor(rootScope: Scope) {
@@ -82,6 +82,7 @@ class SymbolAnalyzer {
 				this.visit(node.body);
 				break;
 			case 'ReturnStatement':
+			case 'AmbushStatement':
 				this.visit(node.argument);
 				break;
 			case 'FunctionDeclaration':
@@ -117,15 +118,15 @@ class SymbolAnalyzer {
 			case 'Identifier':
 				this.visitIdentifier(node);
 				break;
-			case 'ErrorNode':
 			case 'NumericLiteral':
 			case 'StringLiteral':
 			case 'BooleanLiteral':
 			case 'NullLiteral':
 			case 'BreakStatement':
+			case 'ErrorNode':
 				break;
-			// default: // 此处已推断为不可达
-			// 	console.warn(`[SymbolAnalyzer] Unhandled node type: ${node.type}`);
+			default: // 此处已推断为不可达
+				console.warn(`[符号分析器] 发现不可描述的节点: `, node);
 		}
 	}
 
@@ -283,7 +284,7 @@ class SymbolAnalyzer {
 		name: string,
 		kind: SymbolInfo['kind'],
 		type: MeaoiuType,
-		declarationNode: AST.AstNode,
+		declarationNode: AST.Node,
 		valueRef?: SymbolInfo
 	) {
 		if (this.currentScope.symbols.has(name)) {
@@ -334,8 +335,8 @@ export function analyzeSymbols(
 ): {
 	rootScope: Scope;
 	errors: SemanticError[];
-	symbolMap: Map<AST.AstNode, SymbolInfo>;
-	nodeScopeMap: Map<AST.AstNode, Scope>;
+	symbolMap: Map<AST.Node, SymbolInfo>;
+	nodeScopeMap: Map<AST.Node, Scope>;
 } {
 	const rootScope: Scope = { children: [], symbols: new Map() };
 	for (const name of builtInNames) {

@@ -30,6 +30,7 @@ export type Statement =
 	| AssignmentStatement
 	| BlockStatement
 	| ReturnStatement
+	| AmbushStatement
 	| ExpressionStatement
 	| ErrorNode;
 
@@ -114,6 +115,10 @@ export interface IfStatement extends AstNode<'IfStatement'> {
 
 export interface LoopStatement extends AstNode<'LoopStatement'> {
 	body: BlockStatement;
+}
+
+export interface AmbushStatement extends AstNode<'AmbushStatement'> {
+	argument?: Expression | undefined;
 }
 
 export interface BreakStatement extends AstNode<'BreakStatement'> {
