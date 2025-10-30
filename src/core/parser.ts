@@ -21,8 +21,8 @@ export class Parser {
 
 	constructor(tokens: Token[], mode: 'strict' | 'tolerant' = 'strict') {
 		// 确保有 EOF 哨兵，避免边界问题
-		if (!tokens.length || tokens[tokens.length - 1]!.type !== 'EOF') {
-			tokens = tokens.concat([{ type: 'EOF', value: 'EndOfFile', line: -1, col: -1 } as Token]);
+		if (!tokens.length || tokens[tokens.length - 1]?.type !== 'EOF') {
+			tokens = tokens.concat([{ type: 'EOF', value: 'EndOfFile', line: -1, col: -1 }]);
 		}
 		this.tokens = tokens;
 		this.mode = mode;
@@ -149,10 +149,9 @@ export class Parser {
 		return this.makeSyntheticToken(type, prev, type === 'TERMINATOR' ? '~' : '');
 	}
 
-	private endLoc(token?: Token): { endLine?: number; endCol?: number } {
-		if (!token) token = this.tokens[this.position - 1];
-		if (!token) return {};
-		return { endLine: token.line, endCol: token.col + (token.value?.length ?? 0) };
+	private endLoc(token?: Token): { endLine: number; endCol: number } {
+		if (!token) token = this.tokens[this.position - 1] ?? this.current();
+		return { endLine: token.line, endCol: token.col + token.value.length };
 	}
 
 	public parse(): { program: AST.Program; errors: SyntaxError[] } {
@@ -162,6 +161,8 @@ export class Parser {
 			body: [],
 			line: startToken.line,
 			col: startToken.col,
+			endLine: startToken.line,
+			endCol: startToken.col,
 		};
 
 		while (this.current().type !== 'EOF') {
@@ -179,9 +180,9 @@ export class Parser {
 			this.commentBuffer = [];
 		}
 
-		const endToken = this.tokens[this.position - 1];
-		program.endLine = endToken?.line;
-		program.endCol = endToken ? endToken.col + (endToken.value?.length ?? 0) : startToken.col;
+		const endToken = this.tokens[this.position - 1] ?? startToken;
+		program.endLine = endToken.line;
+		program.endCol = endToken.col + endToken.value.length;
 
 		return { program, errors: this.errors };
 	}
@@ -243,21 +244,15 @@ export class Parser {
 	private formatError(e: Error): SyntaxError {
 		const match = e.message.match(/\[(\d+):(\d+)\]/);
 		if (match) {
-			const [, line, col] = match;
+			const [, rawLine, rawCol] = match;
 			// 移除匹配到的位置信息部分
 			const message = e.message.replace(match[0], '').trim();
-			return {
-				message: message,
-				line: parseInt(line!, 10),
-				col: parseInt(col!, 10),
-			};
+			const line = rawLine ? parseInt(rawLine, 10) : this.current().line;
+			const col = rawCol ? parseInt(rawCol, 10) : this.current().col;
+			return { message, line, col };
 		}
-		const token = this.current();
-		return {
-			message: e.message,
-			line: token.line,
-			col: token.col,
-		};
+		const { line, col } = this.current();
+		return { message: e.message, line, col };
 	}
 
 	private createErrorNode(error: SyntaxError): AST.ErrorNode {
@@ -387,9 +382,9 @@ export class Parser {
 			// 收集并分配 terminator 后面的悄悄话（同一行视为 trailing）
 			this.collectTrailingComments(s, termTok);
 			return s;
-		} catch (e: any) {
+		} catch (e) {
 			if (this.mode !== 'tolerant') throw e;
-			const error = this.formatError(e);
+			const error = e instanceof Error ? this.formatError(e) : this.formatError(new Error(String(e)));
 			this.errors.push(error);
 			this.synchronize();
 			return this.createErrorNode(error);
@@ -420,8 +415,7 @@ export class Parser {
 		};
 	}
 
-	private parseBlockOrIfStatement(): AST.Statement {
-		const startToken = this.current();
+	private parseBlockOrIfStatement(): AST.BlockStatement | AST.IfStatement {
 		let peekPos = this.position;
 		let braceCount = 0;
 		do {
@@ -433,14 +427,7 @@ export class Parser {
 
 		if (this.tokens[peekPos]?.type === 'KEYWORD_CONFIRM') return this.parseInvertedIfStatement();
 
-		const blockExpr = this.parseBlockStatement();
-		return {
-			type: 'ExpressionStatement',
-			expression: blockExpr,
-			line: startToken.line,
-			col: startToken.col,
-			...this.endLoc(),
-		};
+		return this.parseBlockStatement();
 	}
 
 	private parseInvertedIfStatement(): AST.IfStatement {
@@ -449,6 +436,8 @@ export class Parser {
 		this.expect('KEYWORD_CONFIRM', "想法后面需要一个 '好不好?' 来提问喵!");
 		const test = this.parseExpression();
 		let alternate: AST.Statement | undefined;
+
+		if (this.current().type === 'TERMINATOR' && this.peek().type === 'KEYWORD_ELSE') this.advance(); // 吃掉可选的 '~'
 
 		if (this.current().type === 'KEYWORD_ELSE') {
 			this.advance();
@@ -602,8 +591,8 @@ export class Parser {
 		if (this.mode === 'tolerant') {
 			try {
 				return this.parseLogicalOrExpression();
-			} catch (e: any) {
-				const error = this.formatError(e);
+			} catch (e) {
+				const error = e instanceof Error ? this.formatError(e) : this.formatError(new Error(String(e)));
 				this.errors.push(error);
 				// 跳过到下一个安全点（一定要前进）
 				this.consumeToRecoveryPoint();
@@ -879,7 +868,7 @@ export class Parser {
 				return this.parseCallExpression();
 			case 'BLOCK_START':
 				this.position--; // 把指针拨回去，让 parseBlockOrIfStatement 处理
-				return this.parseBlockOrIfStatement() as AST.Expression;
+				return this.parseBlockOrIfStatement();
 			case 'PARAM_START':
 				this.position--; // 把指针拨回去，让 parseBlockStatement 处理
 				return this.parseBlockStatement(true);

@@ -132,11 +132,10 @@ export function preprocess(sourceCode: string): string {
 
 	for (let i = 0; i < sourceCode.length; i++) {
 		const char = sourceCode[i]!;
+		const convertedChar = fullWidthMap[char] ?? char;
 
 		switch (state) {
 			case 'DEFAULT': {
-				const convertedChar = fullWidthMap[char] ?? char;
-
 				// 根据转换后的字符来判断状态切换
 				if (convertedChar === "'") {
 					state = 'IN_SINGLE_QUOTE';
@@ -152,9 +151,7 @@ export function preprocess(sourceCode: string): string {
 				break;
 			}
 
-			// 在“保护模式”下，我们只关心退出条件，其他字符一律原样保留
 			case 'IN_SINGLE_QUOTE': {
-				const convertedChar = fullWidthMap[char] ?? char;
 				if (convertedChar === "'") {
 					state = 'DEFAULT';
 					result += convertedChar; // 统一输出半宽
@@ -165,7 +162,6 @@ export function preprocess(sourceCode: string): string {
 			}
 
 			case 'IN_DOUBLE_QUOTE': {
-				const convertedChar = fullWidthMap[char] ?? char;
 				if (convertedChar === '"') {
 					state = 'DEFAULT';
 					result += convertedChar; // 统一输出半宽
@@ -176,7 +172,6 @@ export function preprocess(sourceCode: string): string {
 			}
 
 			case 'IN_COMMENT': {
-				const convertedChar = fullWidthMap[char] ?? char;
 				if (convertedChar === '(') {
 					commentNesting++;
 				} else if (convertedChar === ')') {

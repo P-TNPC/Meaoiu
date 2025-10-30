@@ -1,10 +1,10 @@
 // src/services/highlight.ts
 
-import type * as AST from '../core/ast.js';
 import { tokenize } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
 import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
+import { buildParentMap } from './utils/astUtils.js';
 
 type HighlightTokens = { line: number; col: number; length: number; tokenType: number; tokenModifiers: number }[];
 
@@ -17,19 +17,9 @@ export function getHighlightTokens(sourceCode: string) {
 	const highlightTokens: HighlightTokens = [];
 
 	const { program: ast } = new Parser(tokenize(sourceCode, { ignoreComments: true }), 'tolerant').parse();
+	const parentMap = buildParentMap(ast);
+
 	const { symbolMap } = analyzeSymbols(ast, builtInFunctionNames);
-	const parentMap = new Map<AST.Node, AST.Node>();
-	function buildParentMap(node: AST.Node, parent?: AST.Node) {
-		if (parent) parentMap.set(node, parent);
-
-		for (const key in node) {
-			const value = (node as any)[key];
-			if (Array.isArray(value)) value.forEach(child => buildParentMap(child, node));
-			else if (value?.type) buildParentMap(value, node);
-		}
-	}
-	buildParentMap(ast);
-
 	symbolMap.forEach(symbolInfo => {
 		const typeIndex = tokenTypes.indexOf(symbolInfo.kind);
 		if (typeIndex === -1) return;
@@ -40,8 +30,8 @@ export function getHighlightTokens(sourceCode: string) {
 			if (symbolInfo.isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
 			const modBitmask = modifiers.reduce((a, b) => a | (1 << b), 0);
 			highlightTokens.push({
-				line: dec.line! - 1,
-				col: dec.col! - 1,
+				line: dec.line - 1,
+				col: dec.col - 1,
 				length: symbolInfo.name.length,
 				tokenType: typeIndex,
 				tokenModifiers: modBitmask,
@@ -59,9 +49,9 @@ export function getHighlightTokens(sourceCode: string) {
 			}
 			const modBitmask = modifiers.reduce((a, b) => a | (1 << b), 0);
 			highlightTokens.push({
-				line: ref.line! - 1,
-				col: ref.col! - 1,
-				length: (ref as AST.Identifier).symbol.length,
+				line: ref.line - 1,
+				col: ref.col - 1,
+				length: ref.symbol.length,
 				tokenType: typeIndex,
 				tokenModifiers: modBitmask,
 			});

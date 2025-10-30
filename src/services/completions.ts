@@ -12,8 +12,6 @@ function findScopeAt(position: { line: number; col: number }, nodeScopeMap: Map<
 	let bestFitNode: AST.Node | undefined;
 
 	for (const node of nodeScopeMap.keys()) {
-		if (!node.line || !node.col || !node.endLine || !node.endCol) continue;
-
 		const isInside =
 			(position.line > node.line || (position.line === node.line && position.col >= node.col)) &&
 			(position.line < node.endLine || (position.line === node.endLine && position.col <= node.endCol));
@@ -21,9 +19,9 @@ function findScopeAt(position: { line: number; col: number }, nodeScopeMap: Map<
 		if (isInside) {
 			if (
 				!bestFitNode ||
-				(node.line >= bestFitNode.line! &&
-					node.endLine <= bestFitNode.endLine! &&
-					node.endCol! - node.col <= bestFitNode.endCol! - bestFitNode.col!)
+				(node.line >= bestFitNode.line &&
+					node.endLine <= bestFitNode.endLine &&
+					node.endCol - node.col <= bestFitNode.endCol - bestFitNode.col)
 			) {
 				bestFitNode = node;
 			}

@@ -7,15 +7,15 @@ import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
 import { findIdentifierAt } from './utils/astUtils.js';
 
-export function findReferences(sourceCode: string, position: { line: number; col: number }): AST.Node[] {
+export function findReferences(sourceCode: string, position: { line: number; col: number }): AST.Identifier[] {
 	const parser = new Parser(tokenize(sourceCode, { ignoreComments: true }), 'tolerant');
 	const { program: ast } = parser.parse();
 	if (!ast) return [];
 
-	const { symbolMap } = analyzeSymbols(ast, builtInFunctionNames);
 	const identifierNode = findIdentifierAt(ast, position.line, position.col);
 	if (!identifierNode) return [];
 
+	const { symbolMap } = analyzeSymbols(ast, builtInFunctionNames);
 	const symbolInfo = symbolMap.get(identifierNode);
 	if (!symbolInfo) return [];
 

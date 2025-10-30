@@ -14,12 +14,12 @@ function indent(options: FormattingOptions): string {
 
 function printLeadingComments(node: AST.Node, options: FormattingOptions): string {
 	const comments = node.leadingComments;
-	if (!comments || comments.length === 0) return '';
+	if (!comments?.length) return '';
 	return comments.map(c => `${indent(options)}(${c.value})`).join('\n') + '\n';
 }
 function printTrailingComments(node: AST.Node): string {
 	const comments = node.trailingComments;
-	if (!comments || comments.length === 0) return '';
+	if (!comments?.length) return '';
 	return ' ' + comments.map(c => `(${c.value})`).join(' ');
 }
 
@@ -47,7 +47,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 				parts.push(stmtString);
 				const nextStmt = body[i + 1];
 				if (nextStmt) {
-					const gap = nextStmt.line && stmt.endLine ? nextStmt.line - stmt.endLine - 1 : 0;
+					const gap = nextStmt.line - stmt.endLine - 1;
 					const commentCount = nextStmt.leadingComments?.length ?? 0;
 					const hasFunction = stmt.type === 'FunctionDeclaration' || nextStmt.type === 'FunctionDeclaration';
 					const eL = Math.max(gap - commentCount, hasFunction ? 1 : 0);
@@ -66,9 +66,9 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 				}
 				// 纸箱元素用逗号+空格连接
 				const blockContent = n.body
-					.map(stmt => indent(nextLevelOptions) + printNodeContent(stmt, nextLevelOptions))
-					.join(',\n');
-				content = `[=\n${blockContent}\n${indent(options)}=]`;
+					.map(stmt => printNodeContent(stmt, nextLevelOptions))
+					.join(', ');
+				content = `[= ${blockContent} =]`;
 			} else {
 				// 是普通块 [# ... #]
 				if (n.body.length === 0) {
@@ -167,9 +167,9 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 		}
 		case 'SequenceExpression': {
 			const n = node;
-			let s = printNodeContent(n.sections[0]!, options);
+			let s = printNodeContent(n.sections[0], options);
 			for (let i = 0; i < n.operators.length; i++) {
-				s += ` ${n.operators[i]!.value}, ${printNodeContent(n.sections[i + 1]!, options)}`;
+				s += ` ${n.operators[i]!.value}, ${printNodeContent(n.sections[i + 1], options)}`;
 			}
 			content = s;
 			break;
@@ -208,8 +208,8 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 }
 
 export function getFormattedCode(sourceCode: string): string {
-	const options: FormattingOptions = { indentChar: '\t', level: 0 };
 	const parser = new Parser(tokenize(sourceCode, { ignoreComments: false }), 'tolerant');
 	const { program: ast } = parser.parse();
+	const options: FormattingOptions = { indentChar: '\t', level: 0 };
 	return printNodeContent(ast, options);
 }

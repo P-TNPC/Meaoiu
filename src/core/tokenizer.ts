@@ -307,9 +307,8 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 		// 检查是否是需要修复的目标
 		if (
 			currentToken.type === 'KEYWORD_CALL' && // 是 '扒'
-			nextToken &&
-			nextToken.type === 'IDENTIFIER' && // 后面跟着一个标识符
-			!(nextNextToken && nextNextToken.type === 'IDENTIFIER') // 后面无跟着的第二个标识符
+			nextToken?.type === 'IDENTIFIER' && // 后面跟着一个标识符
+			!(nextNextToken?.type === 'IDENTIFIER') // 后面无跟着的第二个标识符
 		) {
 			// 找到了一个潜在目标，例如 '扒 纸箱名函数名 ~'
 			const tokenToSplit = nextToken;

@@ -17,7 +17,7 @@ class LoopValue {
 
 const ReturnOrAmbush: Record<
 	(AST.ReturnStatement | AST.AmbushStatement)['type'],
-	{ emptySignal: any; valueHandler: (value: any) => any }
+	{ emptySignal: ReturnValue | typeof CONTINUE_SIGNAL; valueHandler: (value: any) => any }
 > = {
 	ReturnStatement: {
 		emptySignal: new ReturnValue(null),
@@ -439,10 +439,11 @@ export async function evaluate(
 			default:
 				throw new Error(`[${node.line}:${node.col}] 运行错误喵: 不支持的节点类型 ${node.type} 喵！`);
 		}
-	} catch (err: any) {
-		if (err.message.startsWith('[')) throw err; // 如果错误已经有位置信息，直接抛出
+	} catch (err) {
+		const errorMessage = err instanceof Error ? err.message : String(err);
+		if (errorMessage.startsWith('[')) throw err; // 如果错误已经有位置信息，直接抛出
 		// 否则，附加上当前 AST 节点的位置信息再抛出
-		throw new Error(`[${node.line}:${node.col}] 运行错误喵: ${err.message}`);
+		throw new Error(`[${node.line}:${node.col}] 运行错误喵: ${errorMessage}`);
 	}
 }
 

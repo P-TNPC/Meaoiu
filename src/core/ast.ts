@@ -4,14 +4,19 @@ import type { Token } from './tokenizer.js';
 
 export type Node = Statement | Expression | Program | ErrorNode;
 
+// 允许的属性类型
+type BaseType = string | number | boolean | null | undefined;
+export type NodeValue = BaseType | Node | Node[] | Token[];
+
 export interface AstNode<T extends string = string> {
 	type: T;
-	line?: number | undefined;
-	col?: number | undefined;
-	endLine?: number | undefined;
-	endCol?: number | undefined;
+	line: number;
+	col: number;
+	endLine: number;
+	endCol: number;
 	leadingComments?: Token[];
 	trailingComments?: Token[];
+	[key: string]: NodeValue;
 }
 export interface ErrorNode extends AstNode<'ErrorNode'> {
 	message: string;

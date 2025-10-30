@@ -40,9 +40,6 @@ export class Environment {
 	public assign(name: string, value: any, kind: AST.AssignmentKind): any {
 		const executionScope = this;
 
-		// 立即在当前执行作用域解析源头最终值
-		let finalValue = executionScope.resolveValue(value);
-
 		// 如果赋值操作是 'Move'，需要标记源变量为 "已移动"
 		if (value?.isVariableReference && kind === 'Move') value.scope.variables.get(value.name)!.moved = true;
 
@@ -61,6 +58,8 @@ export class Environment {
 			targetVar = finalTargetScope.variables.get(finalTargetName)!;
 		}
 
+		// 在当前执行作用域解析源头最终值
+		let finalValue = executionScope.resolveValue(value);
 		// 在最终位置赋值
 		logger.debug(
 			`[ENV #${executionScope.id}] ASSIGN: '${finalTargetName}' in Env #${finalTargetScope.id}. (kind: ${kind}) VALUE:`,

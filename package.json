@@ -1,6 +1,6 @@
 {
 	"name": "meaoiu",
-	"version": "0.0.18",
+	"version": "0.0.19",
 	"description": "喵喵喵",
 	"license": "MIT",
 	"author": {
@@ -31,7 +31,7 @@
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
-		"commander": "^14.0.1",
+		"commander": "^14.0.2",
 		"string-width": "^8.1.0"
 	}
 }

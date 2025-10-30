@@ -9,8 +9,8 @@ export interface SymbolInfo {
 	kind: 'variable' | 'function' | 'parameter';
 	type: MeaoiuType;
 	valueRef?: SymbolInfo | undefined;
-	declarations: AST.Node[]; // 在哪里声明的
-	references: AST.Node[]; // 在哪里被引用的
+	declarations: AST.Identifier[]; // 在哪里声明的
+	references: AST.Identifier[]; // 在哪里被引用的
 	isBuiltIn?: boolean; // 是否自家喵
 	isMoved?: boolean; // 是否已被移走
 }

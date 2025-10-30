@@ -108,7 +108,6 @@ class SymbolAnalyzer {
 			case 'UnaryExpression':
 				this.visit(node.argument);
 				break;
-			case 'LogicalExpression':
 			case 'BinaryExpression':
 				this.visitBinaryExpression(node);
 				break;
@@ -118,6 +117,7 @@ class SymbolAnalyzer {
 			case 'Identifier':
 				this.visitIdentifier(node);
 				break;
+			case 'LogicalExpression':
 			case 'NumericLiteral':
 			case 'StringLiteral':
 			case 'BooleanLiteral':
@@ -211,7 +211,7 @@ class SymbolAnalyzer {
 		if (node.kind === 'Move' && node.value.type === 'Identifier') this.markAsMoved(node.value.symbol);
 	}
 
-	private visitBinaryExpression(node: AST.BinaryExpression | AST.LogicalExpression) {
+	private visitBinaryExpression(node: AST.BinaryExpression) {
 		this.visit(node.left);
 		this.visit(node.right);
 
@@ -229,15 +229,15 @@ class SymbolAnalyzer {
 			}
 			this.errors.push({
 				message: `'${op}' 操作符不能用于 '${leftType}' 和 '${rightType}' 之间喵!`,
-				line: node.line!,
-				col: node.col!,
+				line: node.line,
+				col: node.col,
 			});
 		} else if (['-', '*', '/'].includes(op)) {
 			if (leftType === rightType && leftType === typeMap.number) return;
 			this.errors.push({
 				message: `'${op}' 操作符只能用于两个 ${typeMap.number} 之间喵!`,
-				line: node.line!,
-				col: node.col!,
+				line: node.line,
+				col: node.col,
 			});
 		}
 	}
@@ -249,15 +249,15 @@ class SymbolAnalyzer {
 				// 这个 isMoved 状态是经过传播的
 				this.errors.push({
 					message: `使用了已经被移走的变量 '${node.symbol}'，它的碗是空的喵！`,
-					line: node.line!,
-					col: node.col!,
+					line: node.line,
+					col: node.col,
 				});
 			}
 			symbol.references.push(node);
 			this.symbolMap.set(node, symbol);
 			return;
 		}
-		this.errors.push({ message: `找不到名字为 '${node.symbol}' 的玩具喵！`, line: node.line!, col: node.col! });
+		this.errors.push({ message: `找不到名字为 '${node.symbol}' 的玩具喵！`, line: node.line, col: node.col });
 	}
 
 	private markAsMoved(name: string) {
@@ -284,19 +284,22 @@ class SymbolAnalyzer {
 		name: string,
 		kind: SymbolInfo['kind'],
 		type: MeaoiuType,
-		declarationNode: AST.Node,
+		declarationNode: AST.Identifier,
 		valueRef?: SymbolInfo
 	) {
 		if (this.currentScope.symbols.has(name)) {
 			this.errors.push({
 				message: `名字 '${name}' 已经被定义过了喵！`,
-				line: declarationNode.line!,
-				col: declarationNode.col!,
+				line: declarationNode.line,
+				col: declarationNode.col,
 			});
 			return;
 		}
-		// 存储 valueRef
-		this.currentScope.symbols.set(name, { name, kind, type, declarations: [declarationNode], references: [], valueRef });
+
+		const symbolInfo: SymbolInfo = { name, kind, type, declarations: [declarationNode], references: [], valueRef };
+
+		this.currentScope.symbols.set(name, symbolInfo);
+		this.symbolMap.set(declarationNode, symbolInfo);
 	}
 	private lookup(name: string, resolveChain: boolean = true): SymbolInfo | undefined {
 		// 1. 在作用域中找到该名字的“第一环”
