@@ -45,7 +45,8 @@ export type Expression =
 	| BooleanLiteral
 	| NullLiteral
 	| Identifier
-	| BinaryExpression
+	| ArithmeticExpression
+	| ComparisonExpression
 	| CallExpression
 	| SequenceExpression
 	| LogicalExpression
@@ -150,10 +151,15 @@ export interface Identifier extends AstNode<'Identifier'> {
 	symbol: string;
 }
 
-export interface BinaryExpression extends AstNode<'BinaryExpression'> {
+export interface ArithmeticExpression extends AstNode<'ArithmeticExpression'> {
 	left: Expression;
 	right: Expression;
 	operator: string;
+}
+
+export interface ComparisonExpression extends AstNode<'ComparisonExpression'> {
+	expressions: Expression[];
+	operators: Token[];
 }
 
 export interface ExpressionStatement extends AstNode<'ExpressionStatement'> {

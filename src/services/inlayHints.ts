@@ -78,15 +78,22 @@ export function getInlayHints(sourceCode: string): InlayHint[] {
 
 	// 生成变量类型和引用源提示
 	symbolMap.forEach((symbolInfo, node) => {
-		if (node.type !== 'Identifier' || symbolInfo.kind === 'function' || symbolInfo.type === typeMap.unknown) return;
+		if (
+			node.type !== 'Identifier' ||
+			symbolInfo.kind === 'function' ||
+			(symbolInfo.type === typeMap.unknown && !symbolInfo.valueRef)
+		) {
+			return;
+		}
 		const isReference = symbolInfo.references.includes(node);
 		const { name, isMoved } = findUltimateSource(symbolInfo);
 
-		const symbolType = isReference ? '' : `:${symbolInfo.type}`;
-		const sourceName = name === symbolInfo.name ? '' : `*${name}`;
+		const moveMark = !isMoved ? '' : symbolInfo.type === typeMap.unknown ? '!' : '_';
+		const sourceName = name === symbolInfo.name ? '' : `${isMoved ? '' : '*'}${name}`;
+		const symbolType = isReference || symbolInfo.type === typeMap.unknown ? '' : `:${symbolInfo.type}`;
 		hints.push({
 			position: { line: node.line - 1, character: node.endCol - 1 },
-			label: `${isMoved ? '!' : ''}${sourceName}${symbolType}`,
+			label: `${moveMark}${sourceName}${symbolType}`,
 			kind: InlayHintKind.Type,
 			// paddingLeft: true,
 		});

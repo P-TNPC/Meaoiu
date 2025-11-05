@@ -2,7 +2,7 @@
 
 import type * as AST from '../../core/ast.js';
 import type { builtInFunctionNames } from '../../core/builtIns.js';
-import { type MeaoiuType, typeMap } from '../../core/typedef.js';
+import { checkArithmeticOperation, checkComparisonOperation, type MeaoiuType, typeMap } from '../../core/typedef.js';
 import type { Scope, SymbolInfo } from './symbolTable.js';
 
 export interface SemanticError {
@@ -35,19 +35,51 @@ class SymbolAnalyzer {
 				return this.lookup(node.symbol)?.type ?? typeMap.unknown;
 			case 'CallExpression': {
 				const func = this.lookup(node.callee.symbol);
-				if (func?.kind === 'function') return typeMap.unknown;
+				if (func?.kind === 'function') return typeMap.function;
 				return typeMap.unknown;
 			}
-			case 'BinaryExpression': {
+			case 'ArithmeticExpression': {
 				const op = node.operator;
-				if (['>', '<', '>=', '<=', '=='].includes(op)) return typeMap.boolean;
-				if (['+', '-', '*', '/'].includes(op)) return typeMap.number;
-				return typeMap.unknown;
+				if (op !== '+') return typeMap.number;
+
+				let knownType = this.inferExpressionType(node.left);
+				if (knownType === typeMap.unknown) knownType = this.inferExpressionType(node.right);
+
+				return knownType === typeMap.number || knownType === typeMap.string || knownType === typeMap.collection
+					? knownType
+					: typeMap.unknown;
 			}
+			case 'ComparisonExpression':
+				return typeMap.boolean;
 			case 'LogicalExpression':
 				return typeMap.boolean;
-			case 'SequenceExpression':
-				return typeMap.number;
+			case 'SequenceExpression': {
+				let accType: MeaoiuType = typeMap.unknown;
+				let knownType = this.inferExpressionType(node.sections[0]!);
+
+				scan: for (let i = 0; i < node.operators.length; i++) {
+					if (accType !== typeMap.unknown) continue;
+					const op = node.operators[i]!.value;
+					switch (op) {
+						case '+':
+							break;
+						case '==':
+						case '!=':
+							accType = typeMap.boolean;
+							break scan;
+						default:
+							accType = typeMap.number;
+							continue;
+					}
+
+					if (knownType === typeMap.unknown) knownType = this.inferExpressionType(node.sections[i + 1]!);
+
+					if (knownType === typeMap.number || knownType === typeMap.string || knownType === typeMap.collection) {
+						accType = knownType;
+					}
+				}
+				return accType;
+			}
 			case 'BlockStatement':
 				return node.isCollection ? typeMap.collection : typeMap.unknown;
 			case 'MemberAccessExpression':
@@ -108,16 +140,21 @@ class SymbolAnalyzer {
 			case 'UnaryExpression':
 				this.visit(node.argument);
 				break;
-			case 'BinaryExpression':
-				this.visitBinaryExpression(node);
+			case 'ArithmeticExpression':
+				this.visitArithmeticExpression(node);
+				break;
+			case 'ComparisonExpression':
+				this.visitComparisonExpression(node);
 				break;
 			case 'SequenceExpression':
-				node.sections.forEach(s => this.visit(s));
+				this.visitSequenceExpression(node);
 				break;
 			case 'Identifier':
 				this.visitIdentifier(node);
 				break;
 			case 'LogicalExpression':
+				this.visitLogicalExpression(node);
+				break;
 			case 'NumericLiteral':
 			case 'StringLiteral':
 			case 'BooleanLiteral':
@@ -166,7 +203,7 @@ class SymbolAnalyzer {
 	}
 
 	private visitVariableDeclaration(node: AST.VariableDeclaration) {
-		let inferredType = typeMap.null;
+		let inferredType: MeaoiuType = typeMap.null;
 		let valueRef: SymbolInfo | undefined; // 存储引用的符号
 
 		if (node.initialization) {
@@ -211,42 +248,141 @@ class SymbolAnalyzer {
 		if (node.kind === 'Move' && node.value.type === 'Identifier') this.markAsMoved(node.value.symbol);
 	}
 
-	private visitBinaryExpression(node: AST.BinaryExpression) {
+	private visitArithmeticExpression(node: AST.ArithmeticExpression) {
+		const { operator: op, left, right, line, col } = node;
+		this.visit(left);
+		this.visit(right);
+
+		let leftType = this.inferExpressionType(left);
+		let rightType = this.inferExpressionType(right);
+
+		// 计算状态码 (0-3)
+		const state = (+(leftType === typeMap.unknown) << 1) | +(rightType === typeMap.unknown);
+		// 根据状态码查表执行
+		switch (state) {
+			case 3: // 二进制 11: left 和 right 都是 unknown
+				return;
+			case 2: // 二进制 10: 仅 left 是 unknown
+				leftType = rightType;
+				break;
+			case 1: // 二进制 01: 仅 right 是 unknown
+				rightType = leftType;
+				break;
+			case 0: // 二进制 00: 两者都非 unknown
+				break;
+		}
+
+		const error = checkArithmeticOperation(op, leftType, rightType);
+		if (error) this.errors.push({ message: error, line, col });
+	}
+
+	private visitComparisonExpression(node: AST.ComparisonExpression) {
+		if (node.expressions.length < 2) {
+			this.visit(node.expressions[0]);
+			return;
+		}
+
+		let currentLeftType = this.inferExpressionType(node.expressions[0]!);
+		this.visit(node.expressions[0]); // 访问第一个
+
+		for (let i = 0; i < node.operators.length; i++) {
+			const { value: op, line, col } = node.operators[i]!;
+			const currentRightExpr = node.expressions[i + 1]!;
+			let currentRightType = this.inferExpressionType(currentRightExpr); // 必须是 let
+			this.visit(currentRightExpr); // 访问右边
+
+			const state = (+(currentLeftType === typeMap.unknown) << 1) | +(currentRightType === typeMap.unknown);
+			switch (state) {
+				case 3: // 二进制 11: left 和 right 都是 unknown
+					continue; // 跳过检查
+				case 2: // 二进制 10: 仅 left 是 unknown
+					currentLeftType = currentRightType;
+					break;
+				case 1: // 二进制 01: 仅 right 是 unknown
+					currentRightType = currentLeftType;
+					break;
+				case 0: // 二进制 00: 两者都非 unknown
+					break;
+			}
+
+			const error = checkComparisonOperation(op, currentLeftType, currentRightType);
+			if (error) this.errors.push({ message: error, line, col });
+
+			currentLeftType = currentRightType;
+		}
+	}
+
+	private visitSequenceExpression(node: AST.SequenceExpression) {
+		let accType = this.inferExpressionType(node.sections[0]!);
+		this.visit(node.sections[0]); // 访问第一节
+
+		for (let i = 0; i < node.operators.length; i++) {
+			const { value: op, line, col } = node.operators[i]!;
+			if (op === '==' || op === '!=') {
+				this.visitComparisonSequence(node, i + 1); // 让专用检查函数接力
+				return; // 本函数已结束使命
+			}
+			const nextExpr = node.sections[i + 1]!;
+			let nextType = this.inferExpressionType(nextExpr);
+			this.visit(nextExpr); // 访问下一节
+
+			const state = (+(accType === typeMap.unknown) << 1) | +(nextType === typeMap.unknown);
+			switch (state) {
+				case 3: // 二进制 11: unknown op unknown
+					if (op !== '+') accType = typeMap.number; // 非加号，锁定类型
+					continue; // 跳过检查
+				case 2: // 二进制 10: 仅 acc 是 unknown
+					accType = nextType;
+					break;
+				case 1: // 二进制 01: 仅 next 是 unknown
+					nextType = accType;
+					break;
+				case 0: // 二进制 00: 两者都非 unknown
+					break;
+			}
+
+			const error = checkArithmeticOperation(op, accType, nextType);
+			if (error) {
+				this.errors.push({ message: error, line, col });
+				break; // 跳出坏链
+			}
+
+			accType = nextType;
+		}
+	}
+
+	private visitComparisonSequence(node: AST.SequenceExpression, startIndex: number) {
+		// 访问第一个比较操作的右侧
+		this.visit(node.sections[startIndex]);
+
+		// 遍历链上剩下的所有操作符
+		for (let i = startIndex; i < node.operators.length; i++) {
+			const { value: op, line, col } = node.operators[i]!;
+
+			// 检查是否混入了非比较运算符
+			if (op !== '==' && op !== '!=') {
+				this.errors.push({
+					message: `比较节不能混入 '${op}' 算术符喵!`,
+					line: line,
+					col: col,
+				});
+				break; // 发现错误，中止检查
+			}
+
+			// 访问下一个元素
+			this.visit(node.sections[i + 1]!);
+		}
+	}
+
+	private visitLogicalExpression(node: AST.LogicalExpression) {
 		this.visit(node.left);
 		this.visit(node.right);
-
-		const leftType = this.inferExpressionType(node.left);
-		const rightType = this.inferExpressionType(node.right);
-		const op = node.operator;
-		// 看不懂不说话喵
-		if (leftType === typeMap.unknown || rightType === typeMap.unknown) return;
-		if (['+', '>', '<', '>=', '<='].includes(op)) {
-			if (
-				leftType === rightType &&
-				(leftType === typeMap.number || leftType === typeMap.string || (leftType === typeMap.collection && op === '+'))
-			) {
-				return;
-			}
-			this.errors.push({
-				message: `'${op}' 操作符不能用于 '${leftType}' 和 '${rightType}' 之间喵!`,
-				line: node.line,
-				col: node.col,
-			});
-		} else if (['-', '*', '/'].includes(op)) {
-			if (leftType === rightType && leftType === typeMap.number) return;
-			this.errors.push({
-				message: `'${op}' 操作符只能用于两个 ${typeMap.number} 之间喵!`,
-				line: node.line,
-				col: node.col,
-			});
-		}
 	}
 
 	private visitIdentifier(node: AST.Identifier) {
 		const symbol = this.lookup(node.symbol); // 默认 resolveChain = true
 		if (symbol) {
 			if (symbol.isMoved) {
-				// 这个 isMoved 状态是经过传播的
 				this.errors.push({
 					message: `使用了已经被移走的变量 '${node.symbol}'，它的碗是空的喵！`,
 					line: node.line,
@@ -277,9 +413,11 @@ class SymbolAnalyzer {
 		this.currentScope.children.push(newScope);
 		this.currentScope = newScope;
 	}
+
 	private leaveScope() {
 		this.currentScope = this.currentScope.parent!;
 	}
+
 	private declare(
 		name: string,
 		kind: SymbolInfo['kind'],
@@ -301,6 +439,7 @@ class SymbolAnalyzer {
 		this.currentScope.symbols.set(name, symbolInfo);
 		this.symbolMap.set(declarationNode, symbolInfo);
 	}
+
 	private lookup(name: string, resolveChain: boolean = true): SymbolInfo | undefined {
 		// 1. 在作用域中找到该名字的“第一环”
 		let s: Scope | undefined = this.currentScope;
@@ -321,8 +460,12 @@ class SymbolAnalyzer {
 		let current: SymbolInfo | undefined = foundSymbol;
 		while (current) {
 			if (current.isMoved) {
-				// 为了缓存，把“第一环”也标记为已移动
-				foundSymbol.isMoved = true;
+				// 创建一个已衰变的符号对象
+				foundSymbol = {
+					...foundSymbol,
+					isMoved: true,
+					type: typeMap.unknown,
+				};
 				break;
 			}
 			current = current.valueRef;

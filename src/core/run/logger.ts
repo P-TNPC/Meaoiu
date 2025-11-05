@@ -1,33 +1,24 @@
 // src/core/run/logger.ts
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-const LEVEL_PRIORITY: Record<LogLevel, number> = {
-	debug: 0,
-	info: 1,
-	warn: 2,
-	error: 3,
-};
+const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;
+type LevelKey = keyof typeof LEVELS;
+type Level = (typeof LEVELS)[LevelKey];
 
-const getLogLevel = (): LogLevel => {
-	const level = process.env['LOG_LEVEL']?.toLowerCase() as LogLevel;
-	return level && LEVEL_PRIORITY[level] !== undefined ? level : 'warn';
-	// return level && LEVEL_PRIORITY[level] !== undefined ? level : 'debug';
+const getLogLevel = (): Level => {
+	const key = process.env['LOG_LEVEL']?.toLowerCase() ?? 'warn';
+	return LEVELS[key as LevelKey] ?? LEVELS.warn;
 };
 
 const currentLevel = getLogLevel();
 
-const logger = {
-	debug: (...args: any[]) =>
-		LEVEL_PRIORITY.debug >= LEVEL_PRIORITY[currentLevel] ? console.debug('[DEBUG]', ...args) : undefined,
+const logger: Record<LevelKey, (...args: unknown[]) => void> = {
+	debug: (...args) => currentLevel <= LEVELS.debug && console.debug('[DEBUG]', ...args),
 
-	info: (...args: any[]) =>
-		LEVEL_PRIORITY.info >= LEVEL_PRIORITY[currentLevel] ? console.info('[INFO]', ...args) : undefined,
+	info: (...args) => currentLevel <= LEVELS.info && console.info('[INFO]', ...args),
 
-	warn: (...args: any[]) =>
-		LEVEL_PRIORITY.warn >= LEVEL_PRIORITY[currentLevel] ? console.warn('[WARN]', ...args) : undefined,
+	warn: (...args) => currentLevel <= LEVELS.warn && console.warn('[WARN]', ...args),
 
-	error: (...args: any[]) =>
-		LEVEL_PRIORITY.error >= LEVEL_PRIORITY[currentLevel] ? console.error('[ERROR]', ...args) : undefined,
+	error: (...args) => currentLevel <= LEVELS.error && console.error('[ERROR]', ...args),
 };
 
 export default logger;

@@ -37,7 +37,7 @@ export class Environment {
 	/**
 	 * 为已存在的变量赋值。
 	 */
-	public assign(name: string, value: any, kind: AST.AssignmentKind): any {
+	public assign(name: string, value: any, kind: AST.AssignmentKind) {
 		const executionScope = this;
 
 		// 如果赋值操作是 'Move'，需要标记源变量为 "已移动"
@@ -49,13 +49,13 @@ export class Environment {
 
 		let finalTargetScope = initialTargetScope;
 		let finalTargetName = name;
-		let targetVar = finalTargetScope.variables.get(finalTargetName)!;
+		let targetVar = finalTargetScope.variables.get(finalTargetName);
 
 		// 顺着引用链一直往下找，找到真正的“碗”
-		while (targetVar.value?.isReference) {
+		while (targetVar?.value?.isReference) {
 			finalTargetScope = targetVar.value.scope;
 			finalTargetName = targetVar.value.name;
-			targetVar = finalTargetScope.variables.get(finalTargetName)!;
+			targetVar = finalTargetScope.variables.get(finalTargetName);
 		}
 
 		// 在当前执行作用域解析源头最终值

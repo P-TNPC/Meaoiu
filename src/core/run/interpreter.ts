@@ -3,7 +3,7 @@
 import type * as AST from '../ast.js';
 import { Environment } from './environment.js';
 import { type BuiltInFunctions, isBuiltInFunctionName } from '../builtIns.js';
-import { getMeaoiuType, typeMap } from '../typedef.js';
+import { checkArithmeticOperation, checkComparisonOperation, getMeaoiuType, typeMap } from '../typedef.js';
 import logger from './logger.js';
 
 const BREAK_SIGNAL = { type: 'BREAK_SIGNAL' }; // '累了~'
@@ -30,7 +30,7 @@ const ReturnOrAmbush: Record<
 };
 
 type BoundaryEnv = Partial<Record<(AST.ReturnStatement | AST.AmbushStatement)['type'], Environment>>;
-enum NewEnvType {
+const enum NewEnvType {
 	normal,
 	func,
 	loop,
@@ -139,65 +139,58 @@ export async function evaluate(
 			}
 			case 'SequenceExpression': {
 				const seqExpr = node;
-				let accumulator = env.resolveValue(await evaluate(seqExpr.sections[0]!, env, builtIns, boundaryEnv));
+				let accVal = env.resolveValue(await evaluate(seqExpr.sections[0]!, env, builtIns, boundaryEnv));
+
 				for (let i = 0; i < seqExpr.operators.length; i++) {
-					const operator = seqExpr.operators[i]?.value;
-					const rightHandSide = env.resolveValue(
-						await evaluate(seqExpr.sections[i + 1]!, env, builtIns, boundaryEnv)
-					);
-					switch (operator) {
+					const { value: op, line, col } = seqExpr.operators[i]!;
+					const nextVal = env.resolveValue(await evaluate(seqExpr.sections[i + 1]!, env, builtIns, boundaryEnv));
+
+					switch (op) {
+						case '==':
+							accVal = accVal === nextVal;
+							continue; // 计算完毕，继续下一次循环
+						case '!=':
+							accVal = accVal !== nextVal;
+							continue; // 计算完毕，继续下一次循环
+					}
+
+					const accType = getMeaoiuType(accVal);
+					const nextType = getMeaoiuType(nextVal);
+
+					const error = checkArithmeticOperation(op, accType, nextType);
+					if (error) throw new Error(`[${line}:${col}] 运行错误喵: ${error}`);
+
+					switch (op) {
 						case '+':
-							accumulator += rightHandSide;
+							accVal += nextVal;
 							break;
 						case '-':
-							accumulator -= rightHandSide;
+							accVal -= nextVal;
 							break;
 						case '*':
-							accumulator *= rightHandSide;
+							accVal *= nextVal;
 							break;
 						case '/':
-							accumulator /= rightHandSide;
+							accVal /= nextVal;
 							break;
 						default:
-							throw new Error(`不认识的节运算符喵: ${operator}`);
+							throw new Error(`[${line}:${col}] 运行错误喵: 这是什么节喵: ${op}`);
 					}
 				}
-				return accumulator;
+				return accVal;
 			}
-			case 'BinaryExpression': {
+			case 'ArithmeticExpression': {
 				const binExpr = node;
-				const left = await evaluate(binExpr.left, env, builtIns, boundaryEnv);
-				const right = await evaluate(binExpr.right, env, builtIns, boundaryEnv);
 
-				const leftVal = env.resolveValue(left);
-				const rightVal = env.resolveValue(right);
+				const op = binExpr.operator;
+				const leftVal = env.resolveValue(await evaluate(binExpr.left, env, builtIns, boundaryEnv));
+				const rightVal = env.resolveValue(await evaluate(binExpr.right, env, builtIns, boundaryEnv));
 
 				const leftType = getMeaoiuType(leftVal);
 				const rightType = getMeaoiuType(rightVal);
 
-				const op = binExpr.operator;
-
-				if (leftType !== rightType && op !== '==') {
-					throw new Error(`'${op}' 操作符只能给同类用喵! ${leftType} 和 ${rightType} 不可以喵!`);
-				}
-
-				if (['-', '*', '/'].includes(op) && leftType !== typeMap.number) {
-					throw new Error(`'${op}' 操作符只能用于两个 {${typeMap.number}} 之间喵!`);
-				}
-
-				if (['+', '>', '<', '>=', '<='].includes(op)) {
-					if (
-						leftType !== typeMap.number &&
-						leftType !== typeMap.string &&
-						!(leftType === typeMap.collection && op === '+')
-					) {
-						throw new Error(
-							`'${op}' 操作符只能用在 ${typeMap.number}、${typeMap.string}${
-								op === '+' ? ` 或 ${typeMap.collection}` : ''
-							} 上喵!`
-						);
-					}
-				}
+				const error = checkArithmeticOperation(op, leftType, rightType);
+				if (error) throw new Error(error);
 
 				switch (op) {
 					case '+':
@@ -208,18 +201,64 @@ export async function evaluate(
 						return leftVal * rightVal;
 					case '/':
 						return leftVal / rightVal;
-					case '==':
-						return leftVal === rightVal;
-					case '>':
-						return leftVal > rightVal;
-					case '<':
-						return leftVal < rightVal;
-					case '>=':
-						return leftVal >= rightVal;
-					case '<=':
-						return leftVal <= rightVal;
 				}
 				throw new Error(`是两块钱的运算符喵? ${binExpr.operator}`);
+			}
+			case 'ComparisonExpression': {
+				const compExpr = node;
+				if (compExpr.expressions.length < 2) {
+					return env.resolveValue(await evaluate(compExpr.expressions[0]!, env, builtIns, boundaryEnv));
+				}
+
+				let overallResult = true;
+				let currentLeftVal = env.resolveValue(await evaluate(compExpr.expressions[0]!, env, builtIns, boundaryEnv));
+
+				for (let i = 0; i < compExpr.operators.length; i++) {
+					const { value: op, line, col } = compExpr.operators[i]!;
+					const currentRightVal = env.resolveValue(
+						await evaluate(compExpr.expressions[i + 1]!, env, builtIns, boundaryEnv)
+					);
+
+					const leftType = getMeaoiuType(currentLeftVal);
+					const rightType = getMeaoiuType(currentRightVal);
+
+					const error = checkComparisonOperation(op, leftType, rightType);
+					if (error) throw new Error(`[${line}:${col}] 运行错误喵: ${error}`);
+
+					// --- 执行单个比较 ---
+					let currentResult = false;
+					switch (op) {
+						case '==':
+							currentResult = currentLeftVal === currentRightVal;
+							break;
+						case '!=':
+							currentResult = currentLeftVal !== currentRightVal;
+							break;
+						case '>':
+							currentResult = currentLeftVal > currentRightVal;
+							break;
+						case '<':
+							currentResult = currentLeftVal < currentRightVal;
+							break;
+						case '>=':
+							currentResult = currentLeftVal >= currentRightVal;
+							break;
+						case '<=':
+							currentResult = currentLeftVal <= currentRightVal;
+							break;
+						default:
+							throw new Error(`[${line}:${col}] 运行错误喵: 这个不会比喵: ${op}`);
+					}
+
+					if (!currentResult) {
+						overallResult = false;
+						break; // 短路！
+					}
+
+					// 右侧成为下一次比较的左侧
+					currentLeftVal = currentRightVal;
+				}
+				return overallResult;
 			}
 			case 'LogicalExpression': {
 				const logExpr = node;

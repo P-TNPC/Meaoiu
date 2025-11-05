@@ -65,9 +65,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 					break;
 				}
 				// 纸箱元素用逗号+空格连接
-				const blockContent = n.body
-					.map(stmt => printNodeContent(stmt, nextLevelOptions))
-					.join(', ');
+				const blockContent = n.body.map(stmt => printNodeContent(stmt, nextLevelOptions)).join(', ');
 				content = `[= ${blockContent} =]`;
 			} else {
 				// 是普通块 [# ... #]
@@ -151,9 +149,19 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			content = `${op} ${printNodeContent(n.argument, options)}`;
 			break;
 		}
-		case 'BinaryExpression': {
+		case 'ArithmeticExpression': {
 			const n = node;
 			content = `${printNodeContent(n.left, options)} ${n.operator} ${printNodeContent(n.right, options)}`;
+			break;
+		}
+		case 'ComparisonExpression': {
+			const n = node;
+			const parts: string[] = [];
+			for (let i = 0; i < n.expressions.length; i++) {
+				parts.push(printNodeContent(n.expressions[i], options));
+				if (i < n.operators.length) parts.push(n.operators[i]!.value);
+			}
+			content = parts.join(' ');
 			break;
 		}
 		case 'LogicalExpression': {

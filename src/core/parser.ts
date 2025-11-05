@@ -684,13 +684,36 @@ export class Parser {
 
 	private parseSequenceExpression(): AST.Expression {
 		const sT = this.current();
-		const s = [this.parseSection()];
+		const s = [this.parseComparisonExpression()];
 		const o: Token[] = [];
+		const OP_GROUPS = {
+			ARITH: new Set(['+', '-', '*', '/']),
+			COMP_E: new Set(['==', '!=']),
+		};
+		let isCompMode = false;
 
 		while (this.current().type === 'OPERATOR' && this.peek().type === 'COMMA') {
+			const { value: op, line, col } = this.current();
+			switch ((+OP_GROUPS.ARITH.has(op) << 2) | (+OP_GROUPS.COMP_E.has(op) << 1) | +isCompMode) {
+				case 0: // 000 无算术|无比较|算术模式
+				case 1: // 001 无算术|无比较|比较模式
+					throw new Error(`[${line}:${col}] 语法错误喵: '${op}' 不能用在节之间喵!`);
+				case 2: // 010 无算术|有比较|算术模式
+					isCompMode = true; // 切为比较模式
+					break;
+				case 3: // 011 无算术|有比较|比较模式
+				case 4: // 100 有算术|无比较|算术模式
+					break;
+				case 5: // 101 有算术|无比较|比较模式
+					throw new Error(`[${line}:${col}] 语法错误喵: 比较之后就不能做算术了喵!`);
+				// 以下状态理论不可达：
+				// 110 有算术|有比较|算术模式
+				// 111 有算术|有比较|比较模式
+			}
+
 			o.push(this.advance());
 			this.advance();
-			s.push(this.parseSection());
+			s.push(this.parseComparisonExpression());
 		}
 
 		if (s.length === 1) return s[0]!;
@@ -705,28 +728,28 @@ export class Parser {
 		};
 	}
 
-	private parseSection(): AST.Expression {
-		return this.parseComparisonExpression();
-	}
-
 	private parseComparisonExpression(): AST.Expression {
-		let l = this.parseAdditiveExpression();
+		const sT = this.current();
+		const expressions = [this.parseAdditiveExpression()];
+		const operators: Token[] = [];
 
-		while (['==', '>', '<', '>=', '<='].includes(this.current().value) && this.peek().type !== 'COMMA') {
-			const s = this.current();
-			const o = this.advance().value;
-			const r = this.parseAdditiveExpression();
-			l = {
-				type: 'BinaryExpression',
-				left: l,
-				operator: o,
-				right: r,
-				line: s.line,
-				col: s.col,
-				...this.endLoc(),
-			};
+		while (['==', '!=', '>', '<', '>=', '<='].includes(this.current().value) && this.peek().type !== 'COMMA') {
+			operators.push(this.advance());
+			expressions.push(this.parseAdditiveExpression());
 		}
-		return l;
+
+		// 如果没有比较（只有一个操作数），就返回那个操作数本身
+		if (expressions.length === 1) return expressions[0]!;
+
+		// 否则，创建一个链式比较节点
+		return {
+			type: 'ComparisonExpression',
+			expressions,
+			operators,
+			line: sT.line,
+			col: sT.col,
+			...this.endLoc(),
+		};
 	}
 
 	private parseAdditiveExpression(): AST.Expression {
@@ -737,7 +760,7 @@ export class Parser {
 			const o = this.advance().value;
 			const r = this.parseMultiplicativeExpression();
 			l = {
-				type: 'BinaryExpression',
+				type: 'ArithmeticExpression',
 				left: l,
 				operator: o,
 				right: r,
@@ -757,7 +780,7 @@ export class Parser {
 			const o = this.advance().value;
 			const r = this.parseUnaryExpression();
 			l = {
-				type: 'BinaryExpression',
+				type: 'ArithmeticExpression',
 				left: l,
 				operator: o,
 				right: r,

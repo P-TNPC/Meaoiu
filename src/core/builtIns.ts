@@ -24,9 +24,10 @@ export const builtInFunctionNames = [
 	'猫咪艺术',
 	'哈气',
 ] as const;
-export type BuiltInFunctions = Record<(typeof builtInFunctionNames)[number], (args: any[]) => any>;
+type BuiltInFunctionName = (typeof builtInFunctionNames)[number];
+export type BuiltInFunctions = Record<BuiltInFunctionName, (args: any[]) => any>;
 
-export function isBuiltInFunctionName(name: string): name is (typeof builtInFunctionNames)[number] {
+export function isBuiltInFunctionName(name: string): name is BuiltInFunctionName {
 	return (builtInFunctionNames as readonly string[]).includes(name);
 }
 

@@ -19,14 +19,13 @@ export function findIdentifierAt(ast: AST.Node, line: number, col: number): AST.
 	function walk(node: AST.Node) {
 		if (!node || found) return;
 
-		// 检查当前节点是否是我们要找的目标
 		if (node.type === 'Identifier') {
 			const idNode = node;
 			const startCol = idNode.col;
 			// 范围是左闭右开的，例如 col 6 覆盖了 'a'，但 col 7 就不在 'a' 上了
 			const endCol = startCol + idNode.symbol.length;
 
-			if (idNode.line === line && col >= startCol && col < endCol) {
+			if (idNode.line === line && startCol <= col && col < endCol) {
 				found = idNode;
 				return;
 			}

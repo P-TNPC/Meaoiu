@@ -40,32 +40,7 @@ export type TokenType =
 	| 'LOGIC_CLOSE_NOR'
 	| 'COMMENT';
 
-export type Keyword =
-	| '蹭'
-	| '就是'
-	| '就像'
-	| '高仿'
-	| '才是'
-	| '抢走'
-	| '好不好?'
-	| '不然'
-	| '玩耍'
-	| '累了'
-	| '想要'
-	| '扒'
-	| '叼回来'
-	| '偷袭'
-	| '好喵'
-	| '坏喵'
-	| '空碗'
-	| '和'
-	| '或'
-	| '都好'
-	| '有好'
-	| '都坏'
-	| '有坏';
-
-export const KEYWORDS: Record<Keyword, TokenType> = {
+export const KEYWORDS = {
 	蹭: 'KEYWORD_USE',
 	就是: 'KEYWORD_IS',
 	就像: 'KEYWORD_LIKE',
@@ -89,7 +64,9 @@ export const KEYWORDS: Record<Keyword, TokenType> = {
 	有好: 'LOGIC_CLOSE_OR',
 	都坏: 'LOGIC_CLOSE_NOR',
 	有坏: 'LOGIC_CLOSE_NAND',
-} as const;
+} as const satisfies Record<string, TokenType>;
+export type Keyword = keyof typeof KEYWORDS;
+
 export const sortedKeywords = Object.keys(KEYWORDS).sort((a, b) => b.length - a.length) as Keyword[];
 export function isKeyword(symbol: string): symbol is Keyword {
 	return symbol in KEYWORDS;
@@ -185,7 +162,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 		}
 
 		const twoCharSymbol = sourceCode.substring(cursor, cursor + 2);
-		if (['[=', '=]', '[#', '#]', '==', '>=', '<='].includes(twoCharSymbol)) {
+		if (['[=', '=]', '[#', '#]', '==', '!=', '>=', '<='].includes(twoCharSymbol)) {
 			let type: TokenType = 'OPERATOR';
 			if (twoCharSymbol === '[=') type = 'PARAM_START';
 			if (twoCharSymbol === '=]') type = 'PARAM_END';
@@ -306,54 +283,54 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 
 		// 检查是否是需要修复的目标
 		if (
-			currentToken.type === 'KEYWORD_CALL' && // 是 '扒'
-			nextToken?.type === 'IDENTIFIER' && // 后面跟着一个标识符
-			!(nextNextToken?.type === 'IDENTIFIER') // 后面无跟着的第二个标识符
+			currentToken.type !== 'KEYWORD_CALL' || // 不是 '扒'
+			nextToken?.type !== 'IDENTIFIER' || // 后面无跟着的标识符
+			nextNextToken?.type === 'IDENTIFIER' // 后面跟着第二个标识符
 		) {
-			// 找到了一个潜在目标，例如 '扒 纸箱名函数名 ~'
-			const tokenToSplit = nextToken;
-			let foundSplit = false;
-
-			for (const funcName of sortedFunctionNames) {
-				// 检查这个函数名是不是标识符的后缀
-				if (tokenToSplit.value.endsWith(funcName) && tokenToSplit.value.length > funcName.length) {
-					// 找到了！是它喵！
-					const collectionName = tokenToSplit.value.substring(0, tokenToSplit.value.length - funcName.length);
-
-					// 1. 创建“纸箱名” Token
-					const collectionToken: Token = {
-						type: 'IDENTIFIER',
-						value: collectionName,
-						line: tokenToSplit.line,
-						col: tokenToSplit.col,
-					};
-
-					// 2. 创建“函数名” Token，注意计算新的列号
-					const functionToken: Token = {
-						type: 'IDENTIFIER',
-						value: funcName,
-						line: tokenToSplit.line,
-						col: tokenToSplit.col + collectionName.length,
-					};
-
-					// 3. 将修复后的 Token 推入
-					repairedTokens.push(currentToken); // 扒
-					repairedTokens.push(collectionToken); // 纸箱名
-					repairedTokens.push(functionToken); // 函数名
-
-					i += 2; // 跳过 '扒' 和 '纸箱名函数名' 这两个原始 Token
-					foundSplit = true;
-					break; // 匹配成功，停止搜索
-				}
-			}
-
-			// 如果没找到匹配，说明它就是一个普通的 `扒 某个变量`，正常推入
-			if (!foundSplit) {
-				repairedTokens.push(currentToken);
-				i++;
-			}
-		} else {
 			// 不是需要修复的目标，或者是一个安全的 `扒 纸箱名 函数名`
+			repairedTokens.push(currentToken);
+			i++;
+			continue;
+		}
+
+		// 找到了一个潜在目标，例如 '扒 纸箱名函数名 ~'
+		const tokenToSplit = nextToken;
+		let foundSplit = false;
+
+		for (const funcName of sortedFunctionNames) {
+			// 检查这个函数名是不是标识符的后缀
+			if (!tokenToSplit.value.endsWith(funcName) || tokenToSplit.value.length <= funcName.length) continue;
+			// 找到了！是它喵！
+			const collectionName = tokenToSplit.value.substring(0, tokenToSplit.value.length - funcName.length);
+
+			// 1. 创建“纸箱名” Token
+			const collectionToken: Token = {
+				type: 'IDENTIFIER',
+				value: collectionName,
+				line: tokenToSplit.line,
+				col: tokenToSplit.col,
+			};
+
+			// 2. 创建“函数名” Token，注意计算新的列号
+			const functionToken: Token = {
+				type: 'IDENTIFIER',
+				value: funcName,
+				line: tokenToSplit.line,
+				col: tokenToSplit.col + collectionName.length,
+			};
+
+			// 3. 将修复后的 Token 推入
+			repairedTokens.push(currentToken); // 扒
+			repairedTokens.push(collectionToken); // 纸箱名
+			repairedTokens.push(functionToken); // 函数名
+
+			i += 2; // 跳过 '扒' 和 '纸箱名函数名' 这两个原始 Token
+			foundSplit = true;
+			break; // 匹配成功，停止搜索
+		}
+
+		// 如果没找到匹配，说明它就是一个普通的 `扒 某个变量`，正常推入
+		if (!foundSplit) {
 			repairedTokens.push(currentToken);
 			i++;
 		}
