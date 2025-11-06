@@ -1,7 +1,8 @@
 // src/core/parser.ts
 
-import type { Token, TokenType } from './tokenizer.js';
+import { OP_SETS, type Token, TokenType } from './tokenizer.js';
 import type * as AST from './ast.js';
+import { NodeType } from './ast.js';
 
 export interface SyntaxError {
 	message: string;
@@ -21,8 +22,8 @@ export class Parser {
 
 	constructor(tokens: Token[], mode: 'strict' | 'tolerant' = 'strict') {
 		// 确保有 EOF 哨兵，避免边界问题
-		if (!tokens.length || tokens[tokens.length - 1]?.type !== 'EOF') {
-			tokens = tokens.concat([{ type: 'EOF', value: 'EndOfFile', line: -1, col: -1 }]);
+		if (!tokens.length || tokens[tokens.length - 1]?.type !== TokenType.EOF) {
+			tokens = tokens.concat([{ type: TokenType.EOF, value: 'EndOfFile', line: -1, col: -1 }]);
 		}
 		this.tokens = tokens;
 		this.mode = mode;
@@ -47,7 +48,7 @@ export class Parser {
 	private advance(): Token {
 		// 如果当前位置是悄悄话，先把连续悄悄话收集到 buffer，然后继续
 		let tok = this.tokens[this.position]!;
-		while (tok.type === 'COMMENT') {
+		while (tok.type === TokenType.COMMENT) {
 			this.commentBuffer.push(tok);
 			// 到达 EOF 之前最后的悄悄话，返回 EOF 的情形会在下次调用处理
 			if (this.position >= this.tokens.length - 1) break;
@@ -64,9 +65,8 @@ export class Parser {
 	}
 
 	// 把当前位置开始的连续悄悄话收集到 commentBuffer（不返回 token，直接消费）
-	// 用在我们想主动把当前位置的悄悄话纳入缓存，但不想立刻构造 AST 的情形。
 	private drainCommentsAhead(): void {
-		while (this.current().type === 'COMMENT') {
+		while (this.current().type === TokenType.COMMENT) {
 			this.commentBuffer.push(this.current());
 			if (this.position < this.tokens.length - 1) this.position++;
 			else break;
@@ -85,8 +85,7 @@ export class Parser {
 	// - 不同的保留为未来节点的 leading（放回 commentBuffer）
 	private collectTrailingComments(node: AST.Node, anchorToken: Token | undefined): void {
 		if (!anchorToken) return;
-		// 先把当前位置开始的悄悄话也收进缓存（保证没有漏掉）
-		this.drainCommentsAhead();
+		this.drainCommentsAhead(); // 先把当前位置开始的悄悄话也收进缓存（保证没有漏掉）
 
 		if (!this.commentBuffer.length) return;
 
@@ -94,8 +93,7 @@ export class Parser {
 		const remaining: Token[] = [];
 
 		for (const c of this.commentBuffer) {
-			// 同一行视为 trailing（紧跟在 terminator 后面的悄悄话）
-			if (c.line === anchorToken.line) trailing.push(c);
+			if (c.line === anchorToken.line) trailing.push(c); // 同一行视为 trailing（紧跟在 terminator 后面的悄悄话）
 			else remaining.push(c); // 不同一行，作为下一个节点的 leading
 		}
 
@@ -129,7 +127,7 @@ export class Parser {
 		const anchorLine = prev.line;
 		const anchorCol = prev.col + prev.value.length;
 
-		const errMsg = `语法错误喵: ${type === 'TERMINATOR' ? `在 '${prev.value}' 后面需要一个 '~' 结尾喵!` : message}`;
+		const errMsg = `语法错误喵: ${type === TokenType.TERMINATOR ? `在 '${prev.value}' 后面需要一个 '~' 结尾喵!` : message}`;
 
 		if (this.mode === 'strict') {
 			const errMsgWithLocation = `[${anchorLine}:${anchorCol}] ${errMsg}`;
@@ -146,7 +144,7 @@ export class Parser {
 		this.errors.push(error);
 
 		// 返回合成 token（但不移动 position），解析器会以为期望的 token 存在于此锚点
-		return this.makeSyntheticToken(type, prev, type === 'TERMINATOR' ? '~' : '');
+		return this.makeSyntheticToken(type, prev, type === TokenType.TERMINATOR ? '~' : '');
 	}
 
 	private endLoc(token?: Token): { endLine: number; endCol: number } {
@@ -154,10 +152,93 @@ export class Parser {
 		return { endLine: token.line, endCol: token.col + token.value.length };
 	}
 
+	private synchronize(): void {
+		// 首先尝试找到 TERMINATOR 或语句开始
+		while (this.current().type !== TokenType.EOF) {
+			const currentType = this.current().type;
+
+			if (currentType === TokenType.TERMINATOR) {
+				this.advance();
+				return;
+			}
+
+			if (this.isStatementStart(currentType)) return;
+
+			if (currentType === TokenType.BLOCK_END) {
+				if (this.blockDepth > 0) return;
+				this.errors.push({
+					message: `这个 '${this.current().value}' 被孤立了喵!`,
+					line: this.current().line,
+					col: this.current().col,
+				});
+				this.blockDepth = 0; // 龟苓膏之术
+			}
+
+			this.advance();
+		}
+	}
+
+	private isStatementStart(type: TokenType): boolean {
+		switch (type) {
+			case TokenType.KEYWORD_USE:
+			case TokenType.KEYWORD_LOOP:
+			case TokenType.KEYWORD_BREAK:
+			case TokenType.KEYWORD_AMBUSH:
+			case TokenType.KEYWORD_DEF:
+			case TokenType.KEYWORD_CALL:
+			case TokenType.KEYWORD_RETURN:
+			case TokenType.BLOCK_START:
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	private consumeToRecoveryPoint(): void {
+		// 用于 parseExpression 内部：跳到 , / terminator / statement start / EOF
+		let moved = false;
+		while (
+			this.current().type !== TokenType.EOF &&
+			this.current().type !== TokenType.TERMINATOR &&
+			this.current().type !== TokenType.COMMA &&
+			!this.isStatementStart(this.current().type)
+		) {
+			this.advance();
+			moved = true;
+		}
+		// 若什么也没跳过，则至少前进一个 token，避免卡住
+		if (!moved && this.current().type !== TokenType.EOF) this.advance();
+	}
+
+	private formatError(e: Error): SyntaxError {
+		const match = e.message.match(/\[(\d+):(\d+)\]/);
+		if (match) {
+			const [, rawLine, rawCol] = match;
+			// 移除匹配到的位置信息部分
+			const message = e.message.replace(match[0], '').trim();
+			const line = rawLine ? parseInt(rawLine, 10) : this.current().line;
+			const col = rawCol ? parseInt(rawCol, 10) : this.current().col;
+			return { message, line, col };
+		}
+		const { line, col } = this.current();
+		return { message: e.message, line, col };
+	}
+
+	private createErrorNode(error: SyntaxError): AST.ErrorNode {
+		return {
+			type: NodeType.ErrorNode,
+			message: error.message,
+			line: error.line,
+			col: error.col,
+			endLine: error.line,
+			endCol: error.col,
+		};
+	}
+
 	public parse(): { program: AST.Program; errors: SyntaxError[] } {
 		const startToken = this.current();
 		const program: AST.Program = {
-			type: 'Program',
+			type: NodeType.Program,
 			body: [],
 			line: startToken.line,
 			col: startToken.col,
@@ -165,8 +246,8 @@ export class Parser {
 			endCol: startToken.col,
 		};
 
-		while (this.current().type !== 'EOF') {
-			if (this.current().type === 'TERMINATOR') {
+		while (this.current().type !== TokenType.EOF) {
+			if (this.current().type === TokenType.TERMINATOR) {
 				this.advance();
 				continue;
 			}
@@ -187,93 +268,14 @@ export class Parser {
 		return { program, errors: this.errors };
 	}
 
-	private synchronize(): void {
-		// 首先尝试找到 TERMINATOR 或语句开始
-		while (this.current().type !== 'EOF') {
-			const currentType = this.current().type;
-
-			if (currentType === 'TERMINATOR') {
-				this.advance();
-				return;
-			}
-
-			if (this.isStatementStart(currentType)) return;
-
-			if (currentType === 'BLOCK_END') {
-				if (this.blockDepth > 0) return;
-				this.errors.push({
-					message: `这个 '${this.current().value}' 被孤立了喵!`,
-					line: this.current().line,
-					col: this.current().col,
-				});
-				this.blockDepth = 0; // 龟苓膏之术
-			}
-
-			this.advance();
-		}
-	}
-
-	private consumeToRecoveryPoint(): void {
-		// 用于 parseExpression 内部：跳到 , / terminator / statement start / EOF
-		let moved = false;
-		while (
-			this.current().type !== 'EOF' &&
-			this.current().type !== 'TERMINATOR' &&
-			this.current().type !== 'COMMA' &&
-			!this.isStatementStart(this.current().type)
-		) {
-			this.advance();
-			moved = true;
-		}
-		// 若什么也没跳过，则至少前进一个 token，避免卡住
-		if (!moved && this.current().type !== 'EOF') this.advance();
-	}
-
-	private isStatementStart(type: TokenType): boolean {
-		return [
-			'KEYWORD_USE',
-			'KEYWORD_LOOP',
-			'KEYWORD_DEF',
-			'KEYWORD_RETURN',
-			'KEYWORD_CALL',
-			'KEYWORD_BREAK',
-			'BLOCK_START',
-		].includes(type);
-	}
-
-	private formatError(e: Error): SyntaxError {
-		const match = e.message.match(/\[(\d+):(\d+)\]/);
-		if (match) {
-			const [, rawLine, rawCol] = match;
-			// 移除匹配到的位置信息部分
-			const message = e.message.replace(match[0], '').trim();
-			const line = rawLine ? parseInt(rawLine, 10) : this.current().line;
-			const col = rawCol ? parseInt(rawCol, 10) : this.current().col;
-			return { message, line, col };
-		}
-		const { line, col } = this.current();
-		return { message: e.message, line, col };
-	}
-
-	private createErrorNode(error: SyntaxError): AST.ErrorNode {
-		return {
-			type: 'ErrorNode',
-			message: error.message,
-			line: error.line,
-			col: error.col,
-			endLine: error.line,
-			endCol: error.col,
-		};
-	}
-
 	private parseIdentifier(): AST.Identifier {
 		// identifier 也应接收可能的 leading 悄悄话
 		this.drainCommentsAhead();
 		const leading = this.takeLeadingComments();
 
-		const t = this.expect('IDENTIFIER', '这里需要一个标识符喵');
+		const t = this.expect(TokenType.IDENTIFIER, '这里需要一个标识符喵');
 		const node: AST.Identifier = {
-			type: 'Identifier',
+			type: NodeType.Identifier,
 			symbol: t.value,
 			line: t.line,
 			col: t.col,
@@ -286,22 +288,22 @@ export class Parser {
 
 	private parseVariableDeclaration(isImplicit: boolean = false): AST.VariableDeclaration {
 		const sT = this.current();
-		if (!isImplicit) this.expect('KEYWORD_USE', '声明需要以 "蹭" 开头喵'); // 显式声明，消费关键字
+		if (!isImplicit) this.expect(TokenType.KEYWORD_USE, '声明需要以 "蹭" 开头喵'); // 显式声明，消费关键字
 		const identifier = this.parseIdentifier();
 		let initialization: AST.VariableDeclaration['initialization'];
 
 		// 检查后面是否紧跟赋值关键字
 		if (
-			this.current().type === 'KEYWORD_IS' ||
-			this.current().type === 'KEYWORD_LIKE' ||
-			this.current().type === 'KEYWORD_ONLY'
+			this.current().type === TokenType.KEYWORD_IS ||
+			this.current().type === TokenType.KEYWORD_LIKE ||
+			this.current().type === TokenType.KEYWORD_ONLY
 		) {
 			initialization = this.parseAssignmentStatement(identifier);
 		}
 
 		const eL = this.endLoc();
 		return {
-			type: 'VariableDeclaration',
+			type: NodeType.VariableDeclaration,
 			identifier,
 			initialization,
 			line: sT.line,
@@ -316,7 +318,7 @@ export class Parser {
 		const n = this.parseIdentifier();
 		const b = this.parseBlockStatement(false);
 		return {
-			type: 'FunctionDeclaration',
+			type: NodeType.FunctionDeclaration,
 			name: n,
 			params: p,
 			body: b,
@@ -336,44 +338,50 @@ export class Parser {
 		try {
 			let s: AST.Statement;
 			switch (sT.type) {
-				case 'KEYWORD_USE':
+				case TokenType.KEYWORD_USE:
 					s = this.parseVariableDeclaration();
 					break;
-				case 'KEYWORD_DEF':
+				case TokenType.KEYWORD_DEF:
 					s = this.parseFunctionDeclaration();
 					break;
-				case 'KEYWORD_RETURN':
+				case TokenType.KEYWORD_RETURN:
 					s = this.parseReturnStatement();
 					break;
-				case 'KEYWORD_AMBUSH':
+				case TokenType.KEYWORD_AMBUSH:
 					s = this.parseAmbushStatement();
 					break;
-				case 'KEYWORD_BREAK':
+				case TokenType.KEYWORD_BREAK:
 					this.advance();
 					s = {
-						type: 'BreakStatement',
+						type: NodeType.BreakStatement,
 						line: sT.line,
 						col: sT.col,
 						...this.endLoc(sT),
 					};
 					break;
-				case 'BLOCK_END':
+				case TokenType.BLOCK_END:
 					throw new Error(`[${sT.line}:${sT.col}] 假的语句喵!`);
 				default:
 					const expr = this.parseExpression();
 
 					if (
-						this.current().type === 'KEYWORD_IS' ||
-						this.current().type === 'KEYWORD_LIKE' ||
-						this.current().type === 'KEYWORD_ONLY'
+						this.current().type === TokenType.KEYWORD_IS ||
+						this.current().type === TokenType.KEYWORD_LIKE ||
+						this.current().type === TokenType.KEYWORD_ONLY
 					) {
 						s = this.parseAssignmentStatement(expr); // 将解析好的表达式作为“被赋值者”传入
 					} else {
-						s = { type: 'ExpressionStatement', expression: expr, line: expr.line, col: expr.col, ...this.endLoc() };
+						s = {
+							type: NodeType.ExpressionStatement,
+							expression: expr,
+							line: expr.line,
+							col: expr.col,
+							...this.endLoc(),
+						};
 					}
 			}
 			// 统一通过 expect 检查终结符：在 tolerant 模式下 expect 不会抛
-			const termTok = this.expect('TERMINATOR', "每个语句的最后都需要一个 '~' 结尾喵!");
+			const termTok = this.expect(TokenType.TERMINATOR, "每个语句的最后都需要一个 '~' 结尾喵!");
 
 			if (leading.length) {
 				s.leadingComments = s.leadingComments ?? [];
@@ -394,9 +402,9 @@ export class Parser {
 	private parseAssignmentStatement(assignee: AST.Expression): AST.AssignmentStatement {
 		const aT = this.advance();
 		const assignMap: Partial<Record<TokenType, AST.AssignmentKind>> = {
-			KEYWORD_IS: 'Reference',
-			KEYWORD_LIKE: 'Copy',
-			KEYWORD_ONLY: 'Move',
+			[TokenType.KEYWORD_IS]: 'Reference',
+			[TokenType.KEYWORD_LIKE]: 'Copy',
+			[TokenType.KEYWORD_ONLY]: 'Move',
 		};
 
 		const k = assignMap[aT.type];
@@ -405,7 +413,7 @@ export class Parser {
 		const v = this.parseExpression();
 		const eL = this.endLoc();
 		return {
-			type: 'AssignmentStatement',
+			type: NodeType.AssignmentStatement,
 			assignee,
 			value: v,
 			kind: k,
@@ -420,12 +428,12 @@ export class Parser {
 		let braceCount = 0;
 		do {
 			const token = this.tokens[peekPos];
-			if (token?.type === 'BLOCK_START') braceCount++;
-			else if (token?.type === 'BLOCK_END') braceCount--;
+			if (token?.type === TokenType.BLOCK_START) braceCount++;
+			else if (token?.type === TokenType.BLOCK_END) braceCount--;
 			peekPos++;
 		} while (braceCount > 0 && peekPos < this.tokens.length);
 
-		if (this.tokens[peekPos]?.type === 'KEYWORD_CONFIRM') return this.parseInvertedIfStatement();
+		if (this.tokens[peekPos]?.type === TokenType.KEYWORD_CONFIRM) return this.parseInvertedIfStatement();
 
 		return this.parseBlockStatement();
 	}
@@ -433,25 +441,25 @@ export class Parser {
 	private parseInvertedIfStatement(): AST.IfStatement {
 		const sT = this.current();
 		const consequent = this.parseBlockStatement();
-		this.expect('KEYWORD_CONFIRM', "想法后面需要一个 '好不好?' 来提问喵!");
+		this.expect(TokenType.KEYWORD_CONFIRM, "想法后面需要一个 '好不好?' 来提问喵!");
 		const test = this.parseExpression();
 		let alternate: AST.Statement | undefined;
 
-		if (this.current().type === 'TERMINATOR' && this.peek().type === 'KEYWORD_ELSE') this.advance(); // 吃掉可选的 '~'
+		if (this.current().type === TokenType.TERMINATOR && this.peek().type === TokenType.KEYWORD_ELSE) this.advance(); // 吃掉可选的 '~'
 
-		if (this.current().type === 'KEYWORD_ELSE') {
+		if (this.current().type === TokenType.KEYWORD_ELSE) {
 			this.advance();
 			let pP = this.position;
-			if (this.tokens[pP]?.type === 'BLOCK_START') {
+			if (this.tokens[pP]?.type === TokenType.BLOCK_START) {
 				let bC = 0;
 				do {
 					const t = this.tokens[pP];
-					if (t?.type === 'BLOCK_START') bC++;
-					else if (t?.type === 'BLOCK_END') bC--;
+					if (t?.type === TokenType.BLOCK_START) bC++;
+					else if (t?.type === TokenType.BLOCK_END) bC--;
 					pP++;
 				} while (bC > 0 && pP < this.tokens.length);
 
-				if (this.tokens[pP]?.type === 'KEYWORD_CONFIRM') alternate = this.parseInvertedIfStatement();
+				if (this.tokens[pP]?.type === TokenType.KEYWORD_CONFIRM) alternate = this.parseInvertedIfStatement();
 				else alternate = this.parseBlockStatement();
 			} else {
 				throw new Error(`[${this.current().line}:${this.current().col}] '不然' 后面必须跟着一个想法 '[#...#]' 喵!`);
@@ -460,7 +468,7 @@ export class Parser {
 
 		const eL = this.endLoc();
 		return {
-			type: 'IfStatement',
+			type: NodeType.IfStatement,
 			test,
 			consequent,
 			alternate,
@@ -474,7 +482,7 @@ export class Parser {
 		const s = this.advance();
 		const b = this.parseBlockStatement();
 		return {
-			type: 'LoopStatement',
+			type: NodeType.LoopStatement,
 			body: b,
 			line: s.line,
 			col: s.col,
@@ -486,10 +494,10 @@ export class Parser {
 		const s = this.advance();
 		let a: AST.Expression | undefined;
 
-		if (this.current().type !== 'TERMINATOR') a = this.parseExpression();
+		if (this.current().type !== TokenType.TERMINATOR) a = this.parseExpression();
 
 		return {
-			type: 'ReturnStatement',
+			type: NodeType.ReturnStatement,
 			argument: a,
 			line: s.line,
 			col: s.col,
@@ -502,10 +510,10 @@ export class Parser {
 		let a: AST.Expression | undefined;
 
 		// 检查后面是不是直接跟了终结符
-		if (this.current().type !== 'TERMINATOR') a = this.parseExpression(); // 如果不是，说明有值
+		if (this.current().type !== TokenType.TERMINATOR) a = this.parseExpression(); // 如果不是，说明有值
 
 		return {
-			type: 'AmbushStatement',
+			type: NodeType.AmbushStatement,
 			argument: a,
 			line: s.line,
 			col: s.col,
@@ -515,17 +523,17 @@ export class Parser {
 
 	private parseBlockStatement(isCollection: boolean = false): AST.BlockStatement {
 		const startToken = isCollection
-			? this.expect('PARAM_START', '纸箱或参数列表需要以 [= 开头喵')
-			: this.expect('BLOCK_START', '想法需要以 [# 开头喵');
+			? this.expect(TokenType.PARAM_START, '纸箱或参数列表需要以 [= 开头喵')
+			: this.expect(TokenType.BLOCK_START, '想法需要以 [# 开头喵');
 
 		const body: AST.Statement[] = [];
 		this.blockDepth++;
 
-		const endTokenType = isCollection ? 'PARAM_END' : 'BLOCK_END';
-		const separatorTokenType = isCollection ? 'COMMA' : 'TERMINATOR';
+		const endTokenType = isCollection ? TokenType.PARAM_END : TokenType.BLOCK_END;
+		const separatorTokenType = isCollection ? TokenType.COMMA : TokenType.TERMINATOR;
 		const blockName = isCollection ? '纸箱' : '想法';
 
-		while (this.current().type !== endTokenType && this.current().type !== 'EOF') {
+		while (this.current().type !== endTokenType && this.current().type !== TokenType.EOF) {
 			if (isCollection) {
 				body.push(this.parseCollectionElement());
 				if (this.current().type !== separatorTokenType) break;
@@ -543,7 +551,7 @@ export class Parser {
 		this.blockDepth--;
 
 		return {
-			type: 'BlockStatement',
+			type: NodeType.BlockStatement,
 			body,
 			isCollection,
 			line: startToken.line,
@@ -557,19 +565,19 @@ export class Parser {
 		const peekType = this.peek().type;
 
 		// 模式一: 显式声明，例如 `蹭 a 就是 1`
-		if (currentType === 'KEYWORD_USE') return this.parseVariableDeclaration(false);
+		if (currentType === TokenType.KEYWORD_USE) return this.parseVariableDeclaration(false);
 
 		// 模式二: 隐式声明，例如 `a 就是 1`
 		if (
-			currentType === 'IDENTIFIER' &&
-			(peekType === 'KEYWORD_IS' || peekType === 'KEYWORD_LIKE' || peekType === 'KEYWORD_ONLY')
+			currentType === TokenType.IDENTIFIER &&
+			(peekType === TokenType.KEYWORD_IS || peekType === TokenType.KEYWORD_LIKE || peekType === TokenType.KEYWORD_ONLY)
 		) {
 			return this.parseVariableDeclaration(true);
 		}
 
 		// 模式三：其他所有情况，都是一个独立的表达式
 		const expr = this.parseExpression();
-		return { type: 'ExpressionStatement', expression: expr, line: expr.line, col: expr.col, ...this.endLoc() };
+		return { type: NodeType.ExpressionStatement, expression: expr, line: expr.line, col: expr.col, ...this.endLoc() };
 	}
 
 	private parseCallExpression(): AST.CallExpression {
@@ -578,7 +586,7 @@ export class Parser {
 		const callee = this.parseIdentifier();
 
 		return {
-			type: 'CallExpression',
+			type: NodeType.CallExpression,
 			callee,
 			args: argsExpr,
 			line: sT.line,
@@ -605,18 +613,18 @@ export class Parser {
 	private parseLogicalOrExpression(): AST.Expression {
 		let l = this.parseLogicalAndExpression();
 
-		while (this.current().type === 'LOGIC_OR') {
+		while (this.current().type === TokenType.LOGIC_OR) {
 			const s = this.current();
 			this.advance();
 			const r = this.parseLogicalAndExpression();
 			let o: AST.LogicalOperator;
 
 			switch (this.current().type) {
-				case 'LOGIC_CLOSE_OR':
+				case TokenType.LOGIC_CLOSE_OR:
 					this.advance();
 					o = 'OR';
 					break;
-				case 'LOGIC_CLOSE_NAND':
+				case TokenType.LOGIC_CLOSE_NAND:
 					this.advance();
 					o = 'NAND';
 					break;
@@ -629,7 +637,7 @@ export class Parser {
 			}
 
 			l = {
-				type: 'LogicalExpression',
+				type: NodeType.LogicalExpression,
 				left: l,
 				right: r,
 				operator: o,
@@ -645,18 +653,18 @@ export class Parser {
 	private parseLogicalAndExpression(): AST.Expression {
 		let l = this.parseSequenceExpression();
 
-		while (this.current().type === 'LOGIC_AND') {
+		while (this.current().type === TokenType.LOGIC_AND) {
 			const s = this.current();
 			this.advance();
 			const r = this.parseSequenceExpression();
 			let o: AST.LogicalOperator;
 
 			switch (this.current().type) {
-				case 'LOGIC_CLOSE_AND':
+				case TokenType.LOGIC_CLOSE_AND:
 					this.advance();
 					o = 'AND';
 					break;
-				case 'LOGIC_CLOSE_NOR':
+				case TokenType.LOGIC_CLOSE_NOR:
 					this.advance();
 					o = 'NOR';
 					break;
@@ -669,7 +677,7 @@ export class Parser {
 			}
 
 			l = {
-				type: 'LogicalExpression',
+				type: NodeType.LogicalExpression,
 				left: l,
 				right: r,
 				operator: o,
@@ -686,20 +694,16 @@ export class Parser {
 		const sT = this.current();
 		const s = [this.parseComparisonExpression()];
 		const o: Token[] = [];
-		const OP_GROUPS = {
-			ARITH: new Set(['+', '-', '*', '/']),
-			COMP_E: new Set(['==', '!=']),
-		};
-		let isCompMode = false;
+		let modeMask = 0; // 0 算术模式 | 1 比较模式
 
-		while (this.current().type === 'OPERATOR' && this.peek().type === 'COMMA') {
+		while (this.current().type === TokenType.OPERATOR && this.peek().type === TokenType.COMMA) {
 			const { value: op, line, col } = this.current();
-			switch ((+OP_GROUPS.ARITH.has(op) << 2) | (+OP_GROUPS.COMP_E.has(op) << 1) | +isCompMode) {
+			switch ((+OP_SETS.ARITH.has(op) << 2) | (+OP_SETS.COMP_E.has(op) << 1) | modeMask) {
 				case 0: // 000 无算术|无比较|算术模式
 				case 1: // 001 无算术|无比较|比较模式
 					throw new Error(`[${line}:${col}] 语法错误喵: '${op}' 不能用在节之间喵!`);
 				case 2: // 010 无算术|有比较|算术模式
-					isCompMode = true; // 切为比较模式
+					modeMask = 1; // 切为比较模式
 					break;
 				case 3: // 011 无算术|有比较|比较模式
 				case 4: // 100 有算术|无比较|算术模式
@@ -719,7 +723,7 @@ export class Parser {
 		if (s.length === 1) return s[0]!;
 
 		return {
-			type: 'SequenceExpression',
+			type: NodeType.SequenceExpression,
 			sections: s,
 			operators: o,
 			line: sT.line,
@@ -733,7 +737,7 @@ export class Parser {
 		const expressions = [this.parseAdditiveExpression()];
 		const operators: Token[] = [];
 
-		while (['==', '!=', '>', '<', '>=', '<='].includes(this.current().value) && this.peek().type !== 'COMMA') {
+		while (OP_SETS.COMP.has(this.current().value) && this.peek().type !== TokenType.COMMA) {
 			operators.push(this.advance());
 			expressions.push(this.parseAdditiveExpression());
 		}
@@ -743,7 +747,7 @@ export class Parser {
 
 		// 否则，创建一个链式比较节点
 		return {
-			type: 'ComparisonExpression',
+			type: NodeType.ComparisonExpression,
 			expressions,
 			operators,
 			line: sT.line,
@@ -755,12 +759,12 @@ export class Parser {
 	private parseAdditiveExpression(): AST.Expression {
 		let l = this.parseMultiplicativeExpression();
 
-		while ((this.current().value === '+' || this.current().value === '-') && this.peek().type !== 'COMMA') {
+		while ((this.current().value === '+' || this.current().value === '-') && this.peek().type !== TokenType.COMMA) {
 			const s = this.current();
 			const o = this.advance().value;
 			const r = this.parseMultiplicativeExpression();
 			l = {
-				type: 'ArithmeticExpression',
+				type: NodeType.ArithmeticExpression,
 				left: l,
 				operator: o,
 				right: r,
@@ -775,12 +779,12 @@ export class Parser {
 	private parseMultiplicativeExpression(): AST.Expression {
 		let l = this.parseUnaryExpression();
 
-		while ((this.current().value === '*' || this.current().value === '/') && this.peek().type !== 'COMMA') {
+		while ((this.current().value === '*' || this.current().value === '/') && this.peek().type !== TokenType.COMMA) {
 			const s = this.current();
 			const o = this.advance().value;
 			const r = this.parseUnaryExpression();
 			l = {
-				type: 'ArithmeticExpression',
+				type: NodeType.ArithmeticExpression,
 				left: l,
 				operator: o,
 				right: r,
@@ -796,13 +800,13 @@ export class Parser {
 		let l = this.parsePrimaryExpression();
 
 		// 循环处理连续的 @ 访问
-		while (this.current().type === 'ACCESSOR') {
+		while (this.current().type === TokenType.ACCESSOR) {
 			const s = this.current();
 			this.advance();
 
 			const r = this.parsePrimaryExpression();
 			l = {
-				type: 'MemberAccessExpression',
+				type: NodeType.MemberAccessExpression,
 				object: l,
 				property: r,
 				line: s.line,
@@ -814,14 +818,14 @@ export class Parser {
 	}
 
 	private parseUnaryExpression(): AST.Expression {
-		if (this.current().type === 'KEYWORD_CLONE' || this.current().type === 'KEYWORD_MOVE') {
+		if (this.current().type === TokenType.KEYWORD_CLONE || this.current().type === TokenType.KEYWORD_MOVE) {
 			const sT = this.advance();
-			const op: AST.UnaryOperator = sT.type === 'KEYWORD_CLONE' ? 'Copy' : 'Move';
+			const op: AST.UnaryOperator = sT.type === TokenType.KEYWORD_CLONE ? 'Copy' : 'Move';
 			// 递归调用，这样就可以处理像“高仿 高仿 a”这样的写法
 			const arg = this.parseUnaryExpression();
 
 			return {
-				type: 'UnaryExpression',
+				type: NodeType.UnaryExpression,
 				operator: op,
 				argument: arg,
 				line: sT.line,
@@ -841,66 +845,66 @@ export class Parser {
 
 		let node: AST.Expression;
 		switch (t.type) {
-			case 'NUMBER':
+			case TokenType.NUMBER:
 				node = {
-					type: 'NumericLiteral',
+					type: NodeType.NumericLiteral,
 					value: parseFloat(t.value),
 					line: t.line,
 					col: t.col,
 					...this.endLoc(t),
 				};
 				break;
-			case 'STRING':
+			case TokenType.STRING:
 				node = {
-					type: 'StringLiteral',
+					type: NodeType.StringLiteral,
 					value: t.value,
 					line: t.line,
 					col: t.col,
 					...this.endLoc(t),
 				};
 				break;
-			case 'BOOLEAN':
+			case TokenType.BOOLEAN:
 				node = {
-					type: 'BooleanLiteral',
+					type: NodeType.BooleanLiteral,
 					value: t.value === '好喵',
 					line: t.line,
 					col: t.col,
 					...this.endLoc(t),
 				};
 				break;
-			case 'NULL_LITERAL':
+			case TokenType.NULL_LITERAL:
 				node = {
-					type: 'NullLiteral',
+					type: NodeType.NullLiteral,
 					value: null,
 					line: t.line,
 					col: t.col,
 					...this.endLoc(t),
 				};
 				break;
-			case 'IDENTIFIER':
+			case TokenType.IDENTIFIER:
 				node = {
-					type: 'Identifier',
+					type: NodeType.Identifier,
 					symbol: t.value,
 					line: t.line,
 					col: t.col,
 					...this.endLoc(t),
 				};
 				break;
-			case 'KEYWORD_CALL':
+			case TokenType.KEYWORD_CALL:
 				this.position--; // 把指针拨回去，让 parseCallExpression 处理
 				return this.parseCallExpression();
-			case 'BLOCK_START':
+			case TokenType.BLOCK_START:
 				this.position--; // 把指针拨回去，让 parseBlockOrIfStatement 处理
 				return this.parseBlockOrIfStatement();
-			case 'PARAM_START':
+			case TokenType.PARAM_START:
 				this.position--; // 把指针拨回去，让 parseBlockStatement 处理
 				return this.parseBlockStatement(true);
-			case 'KEYWORD_LOOP':
+			case TokenType.KEYWORD_LOOP:
 				this.position--; // 把指针拨回去，让 parseLoopStatement 处理
 				return this.parseLoopStatement();
 			default:
 				let errMsg = `看不懂的把戏喵: ${t.value}`;
-				if (t.type === 'TERMINATOR') {
+				if (t.type === TokenType.TERMINATOR) {
 					this.position--;
 					errMsg = '只说半句看不懂喵';
 				}

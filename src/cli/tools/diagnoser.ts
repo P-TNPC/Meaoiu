@@ -4,9 +4,10 @@ import { formatError } from './toolUtils.js';
 import { getDiagnostics } from '../../services/diagnostics.js';
 
 export function diagnose(sourceCode: string, filePath: string): void {
+	console.log('-----------------------------');
+	console.log(`[诊断器] 正在分析 ${filePath} ...`);
+	console.log('-----------------------------');
 	try {
-		console.log(`[诊断器] 正在分析 ${filePath} ...`);
-
 		const { syntaxErrors, semanticErrors } = getDiagnostics(sourceCode);
 
 		const noErrorTypes = [
@@ -21,6 +22,8 @@ export function diagnose(sourceCode: string, filePath: string): void {
 
 		if (noErrorTypes.length) console.log(`[诊断器] ✅ 未发现任何${noErrorTypes.join('或')}错误。`);
 	} catch (err) {
+		console.error('\n-----------------------------');
 		console.error(formatError(err, sourceCode, filePath));
 	}
+	console.log('-----------------------------');
 }

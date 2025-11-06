@@ -1,6 +1,7 @@
 // src/services/formatting.ts
 
 import type * as AST from '../core/ast.js';
+import { NodeType } from '../core/ast.js';
 import { tokenize, isKeyword } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
 
@@ -38,7 +39,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 	let content = '';
 
 	switch (node.type) {
-		case 'Program': {
+		case NodeType.Program: {
 			const body = node.body;
 			const parts: string[] = [];
 			for (let i = 0; i < body.length; i++) {
@@ -49,14 +50,15 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 				if (nextStmt) {
 					const gap = nextStmt.line - stmt.endLine - 1;
 					const commentCount = nextStmt.leadingComments?.length ?? 0;
-					const hasFunction = stmt.type === 'FunctionDeclaration' || nextStmt.type === 'FunctionDeclaration';
-					const eL = Math.max(gap - commentCount, hasFunction ? 1 : 0);
+					const hasFunction =
+						stmt.type === NodeType.FunctionDeclaration || nextStmt.type === NodeType.FunctionDeclaration;
+					const eL = Math.max(gap - commentCount, +hasFunction);
 					if (eL > 0) parts.push(...Array(eL).fill(''));
 				}
 			}
 			return parts.join('\n');
 		}
-		case 'BlockStatement': {
+		case NodeType.BlockStatement: {
 			const n = node;
 			if (n.isCollection) {
 				// 是纸箱 [= ... =]
@@ -81,8 +83,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			}
 			break;
 		}
-
-		case 'VariableDeclaration': {
+		case NodeType.VariableDeclaration: {
 			const n = node;
 			if (n.initialization) {
 				// 复用 AssignmentStatement 的打印逻辑
@@ -93,68 +94,68 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			}
 			break;
 		}
-		case 'AssignmentStatement': {
+		case NodeType.AssignmentStatement: {
 			const n = node;
 			const k = n.kind === 'Move' ? '才是' : n.kind === 'Copy' ? '就像' : '就是';
 			content = `${indent(options)}${printNodeContent(n.assignee, options)} ${k} ${printNodeContent(n.value, options)}`;
 			break;
 		}
-		case 'CallExpression': {
+		case NodeType.CallExpression: {
 			const n = node;
 			const argsExpr = printNodeContent(n.args, { ...options, level: 0 });
 			const p = options.level > 0 ? indent(options) : '';
 			content = `${p}扒 ${argsExpr} ${printIdentifier(n.callee)}`;
 			break;
 		}
-		case 'IfStatement': {
+		case NodeType.IfStatement: {
 			const n = node;
 			let r = `${printNodeContent(n.consequent, options)} 好不好? ${printNodeContent(n.test, { ...options, level: 0 })}`;
 			if (n.alternate) r += `\n${indent(options)}不然 ${printNodeContent(n.alternate, options)}`;
 			content = `${indent(options)}${r}`;
 			break;
 		}
-		case 'FunctionDeclaration': {
+		case NodeType.FunctionDeclaration: {
 			const n = node;
 			const paramsBlock = printNodeContent(n.params, options);
 			content = `${indent(options)}想要 ${paramsBlock} ${printIdentifier(n.name)} ${printNodeContent(n.body, options)}`;
 			break;
 		}
-		case 'LoopStatement': {
+		case NodeType.LoopStatement: {
 			content = `${indent(options)}玩耍 ${printNodeContent(node.body, options)}`;
 			break;
 		}
-		case 'ReturnStatement': {
+		case NodeType.ReturnStatement: {
 			const a = node.argument;
 			content = `${indent(options)}叼回来${a ? ` ${printNodeContent(a, options)}` : ''}`;
 			break;
 		}
-		case 'AmbushStatement': {
+		case NodeType.AmbushStatement: {
 			const a = node.argument;
 			content = `${indent(options)}偷袭${a ? ` ${printNodeContent(a, options)}` : ''}`;
 			break;
 		}
-		case 'BreakStatement': {
+		case NodeType.BreakStatement: {
 			content = `${indent(options)}累了`;
 			break;
 		}
-		case 'MemberAccessExpression': {
+		case NodeType.MemberAccessExpression: {
 			const n = node;
 			// 打印 a@b
 			content = `${printNodeContent(n.object, options)}@${printNodeContent(n.property, options)}`;
 			break;
 		}
-		case 'UnaryExpression': {
+		case NodeType.UnaryExpression: {
 			const n = node;
 			const op = n.operator === 'Copy' ? '高仿' : '抢走';
 			content = `${op} ${printNodeContent(n.argument, options)}`;
 			break;
 		}
-		case 'ArithmeticExpression': {
+		case NodeType.ArithmeticExpression: {
 			const n = node;
 			content = `${printNodeContent(n.left, options)} ${n.operator} ${printNodeContent(n.right, options)}`;
 			break;
 		}
-		case 'ComparisonExpression': {
+		case NodeType.ComparisonExpression: {
 			const n = node;
 			const parts: string[] = [];
 			for (let i = 0; i < n.expressions.length; i++) {
@@ -164,7 +165,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			content = parts.join(' ');
 			break;
 		}
-		case 'LogicalExpression': {
+		case NodeType.LogicalExpression: {
 			const n = node;
 			const o = { AND: '和', OR: '或', NOR: '和', NAND: '或' };
 			const c = { AND: '都好', OR: '有好', NOR: '都坏', NAND: '有坏' };
@@ -173,7 +174,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			}`;
 			break;
 		}
-		case 'SequenceExpression': {
+		case NodeType.SequenceExpression: {
 			const n = node;
 			let s = printNodeContent(n.sections[0], options);
 			for (let i = 0; i < n.operators.length; i++) {
@@ -182,34 +183,34 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			content = s;
 			break;
 		}
-		case 'Identifier':
+		case NodeType.Identifier:
 			content = printIdentifier(node);
 			break;
-		case 'NumericLiteral':
+		case NodeType.NumericLiteral:
 			content = String(node.value);
 			break;
-		case 'StringLiteral': {
+		case NodeType.StringLiteral: {
 			const v = node.value;
 			content = v.includes("'") ? `"${v}"` : `'${v}'`;
 			break;
 		}
-		case 'BooleanLiteral':
+		case NodeType.BooleanLiteral:
 			content = node.value ? '好喵' : '坏喵';
 			break;
-		case 'NullLiteral':
+		case NodeType.NullLiteral:
 			content = '空碗';
 			break;
-		case 'ErrorNode':
+		case NodeType.ErrorNode:
 			content = `(喵！解析错误: ${node.message})`;
 			break;
-		case 'ExpressionStatement': {
+		case NodeType.ExpressionStatement: {
 			const n = node;
 			content = printNodeContent(n.expression, options);
 			break;
 		}
 		default: // 此处已推断为不可达
-			console.warn(`[格式化器] 目前无法整理此类节点: `, node);
-			content = '';
+			const n: never = node;
+			console.warn(`[格式化器] 目前无法整理此类节点 `, n);
 	}
 
 	return leading + content;

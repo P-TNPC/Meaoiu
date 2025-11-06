@@ -1,5 +1,6 @@
 // src/services/highlight.ts
 
+import { NodeType } from '../core/ast.js';
 import { tokenize } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
 import { analyzeSymbols } from './utils/symbolAnalyzer.js';
@@ -44,7 +45,7 @@ export function getHighlightTokens(sourceCode: string) {
 			if (symbolInfo.isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
 			if (symbolInfo.isMoved) modifiers.push(tokenModifiers.indexOf('deprecated'));
 			const parent = parentMap.get(ref);
-			if (parent?.type === 'AssignmentStatement' && parent.assignee === ref) {
+			if (parent?.type === NodeType.AssignmentStatement && parent.assignee === ref) {
 				modifiers.push(tokenModifiers.indexOf('modification'));
 			}
 			const modBitmask = modifiers.reduce((a, b) => a | (1 << b), 0);

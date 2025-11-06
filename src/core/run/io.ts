@@ -1,13 +1,13 @@
 // src/core/run/io.ts
 
 // I/O 接口
-export interface MeaoiuRuntimeIO {
+export type MeaoiuRuntimeIO = {
 	print: (args: any[]) => void;
 	prompt: (question: string) => Promise<string>;
 }
 
 // 工厂函数的配置项
-export interface IOConfig {
+export type IOConfig = {
 	onPrint: (formattedString: string) => void; // 底层打印回调
 	onPrompt: (question: string) => Promise<string>; // 底层提问回调
 	useColor?: boolean; // 是否上色
@@ -22,7 +22,7 @@ const colors = {
 };
 
 // Meaoiu 字符串转换器
-function toMeaoiuString(value: any): string {
+function toMeaoiuString(value: unknown): string {
 	if (value === true) return '好喵';
 	if (value === false) return '坏喵';
 	if (value === null || value === undefined) return '空碗';
@@ -30,7 +30,7 @@ function toMeaoiuString(value: any): string {
 }
 
 // 上色
-function colorize(value: any, strValue: string): string {
+function colorize(value: unknown, strValue: string): string {
 	if (value === null || value === undefined) {
 		return `${colors.dim}${strValue}${colors.reset}`;
 	}

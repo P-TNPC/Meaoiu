@@ -1,6 +1,7 @@
 // src/services/utils/astUtils.ts
 
 import * as AST from '../../core/ast.js';
+import { NodeType } from '../../core/ast.js';
 import type { Token } from '../../core/tokenizer.js';
 
 export function isNodeArray(array: AST.Node[] | Token[]): array is AST.Node[] {
@@ -19,7 +20,7 @@ export function findIdentifierAt(ast: AST.Node, line: number, col: number): AST.
 	function walk(node: AST.Node) {
 		if (!node || found) return;
 
-		if (node.type === 'Identifier') {
+		if (node.type === NodeType.Identifier) {
 			const idNode = node;
 			const startCol = idNode.col;
 			// 范围是左闭右开的，例如 col 6 覆盖了 'a'，但 col 7 就不在 'a' 上了

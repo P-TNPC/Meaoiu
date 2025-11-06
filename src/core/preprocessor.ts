@@ -123,11 +123,16 @@ const fullWidthMap: Record<string, string> = {
 	'”': '"',
 };
 
-type State = 'DEFAULT' | 'IN_SINGLE_QUOTE' | 'IN_DOUBLE_QUOTE' | 'IN_COMMENT';
+const enum State {
+	DEFAULT,
+	IN_SINGLE_QUOTE,
+	IN_DOUBLE_QUOTE,
+	IN_COMMENT,
+}
 
 export function preprocess(sourceCode: string): string {
 	let result = '';
-	let state: State = 'DEFAULT';
+	let state: State = State.DEFAULT;
 	let commentNesting = 0;
 
 	for (let i = 0; i < sourceCode.length; i++) {
@@ -135,14 +140,14 @@ export function preprocess(sourceCode: string): string {
 		const convertedChar = fullWidthMap[char] ?? char;
 
 		switch (state) {
-			case 'DEFAULT': {
+			case State.DEFAULT: {
 				// 根据转换后的字符来判断状态切换
 				if (convertedChar === "'") {
-					state = 'IN_SINGLE_QUOTE';
+					state = State.IN_SINGLE_QUOTE;
 				} else if (convertedChar === '"') {
-					state = 'IN_DOUBLE_QUOTE';
+					state = State.IN_DOUBLE_QUOTE;
 				} else if (convertedChar === '(') {
-					state = 'IN_COMMENT';
+					state = State.IN_COMMENT;
 					commentNesting = 1;
 				}
 
@@ -151,9 +156,9 @@ export function preprocess(sourceCode: string): string {
 				break;
 			}
 
-			case 'IN_SINGLE_QUOTE': {
+			case State.IN_SINGLE_QUOTE: {
 				if (convertedChar === "'") {
-					state = 'DEFAULT';
+					state = State.DEFAULT;
 					result += convertedChar; // 统一输出半宽
 				} else {
 					result += char; // 内部字符原样输出
@@ -161,9 +166,9 @@ export function preprocess(sourceCode: string): string {
 				break;
 			}
 
-			case 'IN_DOUBLE_QUOTE': {
+			case State.IN_DOUBLE_QUOTE: {
 				if (convertedChar === '"') {
-					state = 'DEFAULT';
+					state = State.DEFAULT;
 					result += convertedChar; // 统一输出半宽
 				} else {
 					result += char; // 内部字符原样输出
@@ -171,7 +176,7 @@ export function preprocess(sourceCode: string): string {
 				break;
 			}
 
-			case 'IN_COMMENT': {
+			case State.IN_COMMENT: {
 				if (convertedChar === '(') {
 					commentNesting++;
 				} else if (convertedChar === ')') {
@@ -179,13 +184,17 @@ export function preprocess(sourceCode: string): string {
 				}
 
 				if (commentNesting === 0) {
-					state = 'DEFAULT';
+					state = State.DEFAULT;
 					result += convertedChar; // 统一输出半宽
 				} else {
 					result += char; // 内部字符原样输出
 				}
 				break;
 			}
+
+			default:
+				const n: never = state;
+				n;
 		}
 	}
 	return result;

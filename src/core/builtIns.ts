@@ -26,9 +26,10 @@ export const builtInFunctionNames = [
 ] as const;
 type BuiltInFunctionName = (typeof builtInFunctionNames)[number];
 export type BuiltInFunctions = Record<BuiltInFunctionName, (args: any[]) => any>;
+const BuiltInFunctionNameSet = new Set(builtInFunctionNames);
 
 export function isBuiltInFunctionName(name: string): name is BuiltInFunctionName {
-	return (builtInFunctionNames as readonly string[]).includes(name);
+	return (BuiltInFunctionNameSet as Set<string>).has(name);
 }
 
 export const createBuiltInFunctions = (io: MeaoiuRuntimeIO): BuiltInFunctions => ({

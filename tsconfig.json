@@ -33,8 +33,9 @@
 
 		// Recommended Options
 		"strict": true,
-		"verbatimModuleSyntax": true,
-		"isolatedModules": true,
+		"verbatimModuleSyntax": false,
+		"isolatedModules": false,
+		"preserveConstEnums": false,
 		"noUncheckedSideEffectImports": true,
 		"moduleDetection": "force",
 		"skipLibCheck": false

@@ -1,6 +1,7 @@
 // src/services/inlayHints.ts
 
 import * as AST from '../core/ast.js';
+import { NodeType } from '../core/ast.js';
 import { tokenize } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
 import { analyzeSymbols } from './utils/symbolAnalyzer.js';
@@ -17,7 +18,7 @@ interface Position {
 	character: number;
 }
 
-enum InlayHintKind {
+const enum InlayHintKind {
 	Type = 1,
 	Parameter = 2,
 }
@@ -48,13 +49,13 @@ function findUltimateSource(symbol: SymbolInfo): SymbolInfo {
 function extractParamNames(paramsBlock: AST.BlockStatement): string[] {
 	const names: string[] = [];
 	for (const paramStmt of paramsBlock.body) {
-		if (paramStmt.type === 'VariableDeclaration') {
+		if (paramStmt.type === NodeType.VariableDeclaration) {
 			names.push(paramStmt.identifier.symbol);
-		} else if (paramStmt.type === 'ExpressionStatement') {
+		} else if (paramStmt.type === NodeType.ExpressionStatement) {
 			const expr = paramStmt.expression;
-			if (expr.type === 'Identifier') {
+			if (expr.type === NodeType.Identifier) {
 				names.push(expr.symbol);
-			} else if (expr.type === 'UnaryExpression' && expr.argument.type === 'Identifier') {
+			} else if (expr.type === NodeType.UnaryExpression && expr.argument.type === NodeType.Identifier) {
 				names.push(expr.argument.symbol);
 			}
 			// 其他类型的表达式作为参数时没有名字
@@ -79,7 +80,7 @@ export function getInlayHints(sourceCode: string): InlayHint[] {
 	// 生成变量类型和引用源提示
 	symbolMap.forEach((symbolInfo, node) => {
 		if (
-			node.type !== 'Identifier' ||
+			node.type !== NodeType.Identifier ||
 			symbolInfo.kind === 'function' ||
 			(symbolInfo.type === typeMap.unknown && !symbolInfo.valueRef)
 		) {
@@ -106,14 +107,14 @@ export function getInlayHints(sourceCode: string): InlayHint[] {
 	function walk(node: AST.Node) {
 		if (!node) return;
 
-		if (node.type === 'CallExpression' && node.args.type === 'BlockStatement' && node.args.isCollection) {
+		if (node.type === NodeType.CallExpression && node.args.type === NodeType.BlockStatement && node.args.isCollection) {
 			const calleeInfo = symbolMap.get(node.callee);
 
 			if (calleeInfo?.kind === 'function' && !calleeInfo.isBuiltIn && calleeInfo.declarations[0]) {
 				// 从父节点映射找到 FunctionDeclaration
 				const funcDecNode = parentMap.get(calleeInfo.declarations[0]);
 
-				if (funcDecNode?.type === 'FunctionDeclaration') {
+				if (funcDecNode?.type === NodeType.FunctionDeclaration) {
 					const paramNames = extractParamNames(funcDecNode.params);
 					const argsBlock = node.args;
 					argsBlock.body.forEach((argStmt, index) => {

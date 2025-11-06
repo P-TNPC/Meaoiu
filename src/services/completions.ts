@@ -15,16 +15,15 @@ function findScopeAt(position: { line: number; col: number }, nodeScopeMap: Map<
 		const isInside =
 			(position.line > node.line || (position.line === node.line && position.col >= node.col)) &&
 			(position.line < node.endLine || (position.line === node.endLine && position.col <= node.endCol));
+		if (!isInside) continue;
 
-		if (isInside) {
-			if (
-				!bestFitNode ||
-				(node.line >= bestFitNode.line &&
-					node.endLine <= bestFitNode.endLine &&
-					node.endCol - node.col <= bestFitNode.endCol - bestFitNode.col)
-			) {
-				bestFitNode = node;
-			}
+		if (
+			!bestFitNode ||
+			(node.line >= bestFitNode.line &&
+				node.endLine <= bestFitNode.endLine &&
+				node.endCol - node.col <= bestFitNode.endCol - bestFitNode.col)
+		) {
+			bestFitNode = node;
 		}
 	}
 	return bestFitNode ? nodeScopeMap.get(bestFitNode) : undefined;

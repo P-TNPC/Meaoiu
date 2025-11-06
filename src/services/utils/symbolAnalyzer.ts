@@ -1,6 +1,7 @@
 // src/services/utils/symbolAnalyzer.ts
 
 import type * as AST from '../../core/ast.js';
+import { NodeType } from '../../core/ast.js';
 import type { builtInFunctionNames } from '../../core/builtIns.js';
 import { checkArithmeticOperation, checkComparisonOperation, type MeaoiuType, typeMap } from '../../core/typedef.js';
 import type { Scope, SymbolInfo } from './symbolTable.js';
@@ -23,22 +24,22 @@ class SymbolAnalyzer {
 
 	private inferExpressionType(node: AST.Expression): MeaoiuType {
 		switch (node.type) {
-			case 'NumericLiteral':
+			case NodeType.NumericLiteral:
 				return typeMap.number;
-			case 'StringLiteral':
+			case NodeType.StringLiteral:
 				return typeMap.string;
-			case 'BooleanLiteral':
+			case NodeType.BooleanLiteral:
 				return typeMap.boolean;
-			case 'NullLiteral':
+			case NodeType.NullLiteral:
 				return typeMap.null;
-			case 'Identifier':
+			case NodeType.Identifier:
 				return this.lookup(node.symbol)?.type ?? typeMap.unknown;
-			case 'CallExpression': {
+			case NodeType.CallExpression: {
 				const func = this.lookup(node.callee.symbol);
-				if (func?.kind === 'function') return typeMap.function;
+				if (func?.kind === 'function') return typeMap.unknown; // 函数调用时无法静态知道返回类型
 				return typeMap.unknown;
 			}
-			case 'ArithmeticExpression': {
+			case NodeType.ArithmeticExpression: {
 				const op = node.operator;
 				if (op !== '+') return typeMap.number;
 
@@ -49,11 +50,11 @@ class SymbolAnalyzer {
 					? knownType
 					: typeMap.unknown;
 			}
-			case 'ComparisonExpression':
+			case NodeType.ComparisonExpression:
 				return typeMap.boolean;
-			case 'LogicalExpression':
+			case NodeType.LogicalExpression:
 				return typeMap.boolean;
-			case 'SequenceExpression': {
+			case NodeType.SequenceExpression: {
 				let accType: MeaoiuType = typeMap.unknown;
 				let knownType = this.inferExpressionType(node.sections[0]!);
 
@@ -80,12 +81,12 @@ class SymbolAnalyzer {
 				}
 				return accType;
 			}
-			case 'BlockStatement':
+			case NodeType.BlockStatement:
 				return node.isCollection ? typeMap.collection : typeMap.unknown;
-			case 'MemberAccessExpression':
+			case NodeType.MemberAccessExpression:
 				// @ 访问符，目前无法静态知道它会返回什么
 				return typeMap.unknown;
-			case 'UnaryExpression':
+			case NodeType.UnaryExpression:
 				// 高仿/抢走，类型与它操作的参数一致
 				return this.inferExpressionType(node.argument);
 			default:
@@ -97,73 +98,72 @@ class SymbolAnalyzer {
 		if (!node) return;
 		this.nodeScopeMap.set(node, this.currentScope);
 		switch (node.type) {
-			case 'Program':
-			case 'BlockStatement': {
+			case NodeType.Program:
+			case NodeType.BlockStatement: {
 				this.enterScope();
 				node.body.forEach(n => this.visit(n));
 				this.leaveScope();
 				break;
 			}
-			case 'IfStatement': {
+			case NodeType.IfStatement: {
 				this.visit(node.test);
 				this.visit(node.consequent);
 				this.visit(node.alternate);
 				break;
 			}
-			case 'LoopStatement':
+			case NodeType.LoopStatement:
 				this.visit(node.body);
 				break;
-			case 'ReturnStatement':
-			case 'AmbushStatement':
+			case NodeType.UnaryExpression:
+			case NodeType.ReturnStatement:
+			case NodeType.AmbushStatement:
 				this.visit(node.argument);
 				break;
-			case 'FunctionDeclaration':
+			case NodeType.FunctionDeclaration:
 				this.visitFunctionDeclaration(node);
 				break;
-			case 'VariableDeclaration':
+			case NodeType.VariableDeclaration:
 				this.visitVariableDeclaration(node);
 				break;
-			case 'AssignmentStatement':
+			case NodeType.AssignmentStatement:
 				this.visitAssignmentStatement(node);
 				break;
-			case 'ExpressionStatement':
+			case NodeType.ExpressionStatement:
 				this.visit(node.expression);
 				break;
-			case 'CallExpression':
+			case NodeType.CallExpression:
 				this.visit(node.args);
 				this.visit(node.callee);
 				break;
-			case 'MemberAccessExpression':
+			case NodeType.MemberAccessExpression:
 				this.visit(node.object);
 				this.visit(node.property);
 				break;
-			case 'UnaryExpression':
-				this.visit(node.argument);
-				break;
-			case 'ArithmeticExpression':
+			case NodeType.ArithmeticExpression:
 				this.visitArithmeticExpression(node);
 				break;
-			case 'ComparisonExpression':
+			case NodeType.ComparisonExpression:
 				this.visitComparisonExpression(node);
 				break;
-			case 'SequenceExpression':
+			case NodeType.SequenceExpression:
 				this.visitSequenceExpression(node);
 				break;
-			case 'Identifier':
+			case NodeType.Identifier:
 				this.visitIdentifier(node);
 				break;
-			case 'LogicalExpression':
+			case NodeType.LogicalExpression:
 				this.visitLogicalExpression(node);
 				break;
-			case 'NumericLiteral':
-			case 'StringLiteral':
-			case 'BooleanLiteral':
-			case 'NullLiteral':
-			case 'BreakStatement':
-			case 'ErrorNode':
+			case NodeType.NumericLiteral:
+			case NodeType.StringLiteral:
+			case NodeType.BooleanLiteral:
+			case NodeType.NullLiteral:
+			case NodeType.BreakStatement:
+			case NodeType.ErrorNode:
 				break;
 			default: // 此处已推断为不可达
-				console.warn(`[符号分析器] 发现不可描述的节点: `, node);
+				const n: never = node;
+				console.warn(`[符号分析器] 发现不可描述的节点 `, n);
 		}
 	}
 
@@ -172,19 +172,19 @@ class SymbolAnalyzer {
 		this.enterScope();
 
 		for (const paramStmt of node.params.body) {
-			if (paramStmt.type === 'VariableDeclaration') {
+			if (paramStmt.type === NodeType.VariableDeclaration) {
 				// 情况 1: [= a 就是 1 =] 或 [= 蹭 a =]
 				// 这种语句本身就包含了声明逻辑，直接 visit 即可
 				this.visitVariableDeclaration(paramStmt);
-			} else if (paramStmt.type === 'ExpressionStatement') {
+			} else if (paramStmt.type === NodeType.ExpressionStatement) {
 				const expr = paramStmt.expression;
 
-				if (expr.type === 'Identifier') {
+				if (expr.type === NodeType.Identifier) {
 					// 情况 2: [= a =]
 					// 手动将 'a' 声明为 'parameter'
 					this.declare(expr.symbol, 'parameter', typeMap.unknown, expr);
 					this.visitIdentifier(expr); // 访问它，以便高亮和引用查找
-				} else if (expr.type === 'UnaryExpression' && expr.argument.type === 'Identifier') {
+				} else if (expr.type === NodeType.UnaryExpression && expr.argument.type === NodeType.Identifier) {
 					// 情况 3: [= 高仿 a =] 或 [= 抢走 a =]
 					const idNode = expr.argument;
 					// 手动将 'a' 声明为 'parameter'
@@ -213,11 +213,11 @@ class SymbolAnalyzer {
 
 			// 只有 '就是' (Reference) 才创建静态引用链
 			// '才是' (Move) 和 '就像' (Copy) 不创建引用链
-			if (init.kind === 'Reference' && init.value.type === 'Identifier') {
+			if (init.kind === 'Reference' && init.value.type === NodeType.Identifier) {
 				valueRef = this.lookup(init.value.symbol, false);
 			}
 
-			if (init.kind === 'Move' && init.value.type === 'Identifier') this.markAsMoved(init.value.symbol);
+			if (init.kind === 'Move' && init.value.type === NodeType.Identifier) this.markAsMoved(init.value.symbol);
 		}
 		this.declare(node.identifier.symbol, 'variable', inferredType, node.identifier, valueRef);
 	}
@@ -228,7 +228,7 @@ class SymbolAnalyzer {
 
 		this.visit(node.assignee);
 
-		if (node.assignee.type === 'Identifier') {
+		if (node.assignee.type === NodeType.Identifier) {
 			const varName = node.assignee.symbol;
 			const symbol = this.lookup(varName, false); // 查找原始符号（不追踪链）
 
@@ -236,7 +236,7 @@ class SymbolAnalyzer {
 				symbol.type = valueType;
 
 				// 只有 '就是' (Reference) 才更新静态引用链
-				if (node.kind === 'Reference' && node.value.type === 'Identifier') {
+				if (node.kind === 'Reference' && node.value.type === NodeType.Identifier) {
 					symbol.valueRef = this.lookup(node.value.symbol, false);
 				} else {
 					// '才是' (Move) 和 '就像' (Copy) 会打断旧的引用链
@@ -245,7 +245,7 @@ class SymbolAnalyzer {
 			}
 		}
 
-		if (node.kind === 'Move' && node.value.type === 'Identifier') this.markAsMoved(node.value.symbol);
+		if (node.kind === 'Move' && node.value.type === NodeType.Identifier) this.markAsMoved(node.value.symbol);
 	}
 
 	private visitArithmeticExpression(node: AST.ArithmeticExpression) {

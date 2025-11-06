@@ -3,86 +3,105 @@
 import { preprocess } from './preprocessor.js';
 import { builtInFunctionNames } from './builtIns.js';
 
-export type TokenType =
-	| 'KEYWORD_USE'
-	| 'KEYWORD_IS'
-	| 'KEYWORD_LIKE'
-	| 'KEYWORD_CLONE'
-	| 'KEYWORD_ONLY'
-	| 'KEYWORD_MOVE'
-	| 'KEYWORD_CONFIRM'
-	| 'KEYWORD_ELSE'
-	| 'KEYWORD_LOOP'
-	| 'KEYWORD_BREAK'
-	| 'KEYWORD_DEF'
-	| 'KEYWORD_CALL'
-	| 'KEYWORD_RETURN'
-	| 'KEYWORD_AMBUSH'
-	| 'NUMBER'
-	| 'STRING'
-	| 'BOOLEAN'
-	| 'NULL_LITERAL'
-	| 'IDENTIFIER'
-	| 'PARAM_START'
-	| 'PARAM_END'
-	| 'BLOCK_START'
-	| 'BLOCK_END'
-	| 'TERMINATOR'
-	| 'ACCESSOR'
-	| 'OPERATOR'
-	| 'COMMA'
-	| 'EOF'
-	| 'LOGIC_AND'
-	| 'LOGIC_OR'
-	| 'LOGIC_CLOSE_AND'
-	| 'LOGIC_CLOSE_OR'
-	| 'LOGIC_CLOSE_NAND'
-	| 'LOGIC_CLOSE_NOR'
-	| 'COMMENT';
+export const enum TokenType {
+	// 关键字
+	KEYWORD_USE,
+	KEYWORD_IS,
+	KEYWORD_LIKE,
+	KEYWORD_CLONE,
+	KEYWORD_ONLY,
+	KEYWORD_MOVE,
+	KEYWORD_CONFIRM,
+	KEYWORD_ELSE,
+	KEYWORD_LOOP,
+	KEYWORD_BREAK,
+	KEYWORD_AMBUSH,
+	KEYWORD_DEF,
+	KEYWORD_CALL,
+	KEYWORD_RETURN,
+
+	// 字面量
+	NUMBER,
+	STRING,
+	BOOLEAN,
+	NULL_LITERAL,
+
+	// 标识符
+	IDENTIFIER,
+
+	// 符号
+	PARAM_START, // [=
+	PARAM_END, // =]
+	BLOCK_START, // [#
+	BLOCK_END, // #]
+	TERMINATOR, // ~
+	ACCESSOR, // @
+	OPERATOR, // +, -, *, /, ==, !=, >, <, >=, <=
+	COMMA, // ,
+
+	// 逻辑
+	LOGIC_AND, // 和
+	LOGIC_OR, // 或
+	LOGIC_CLOSE_AND, // 都好
+	LOGIC_CLOSE_OR, // 有好
+	LOGIC_CLOSE_NAND, // 有坏
+	LOGIC_CLOSE_NOR, // 都坏
+
+	// 其他
+	COMMENT,
+	EOF,
+}
 
 export const KEYWORDS = {
-	蹭: 'KEYWORD_USE',
-	就是: 'KEYWORD_IS',
-	就像: 'KEYWORD_LIKE',
-	高仿: 'KEYWORD_CLONE',
-	才是: 'KEYWORD_ONLY',
-	抢走: 'KEYWORD_MOVE',
-	'好不好?': 'KEYWORD_CONFIRM',
-	不然: 'KEYWORD_ELSE',
-	玩耍: 'KEYWORD_LOOP',
-	累了: 'KEYWORD_BREAK',
-	想要: 'KEYWORD_DEF',
-	扒: 'KEYWORD_CALL',
-	叼回来: 'KEYWORD_RETURN',
-	偷袭: 'KEYWORD_AMBUSH',
-	好喵: 'BOOLEAN',
-	坏喵: 'BOOLEAN',
-	空碗: 'NULL_LITERAL',
-	和: 'LOGIC_AND',
-	或: 'LOGIC_OR',
-	都好: 'LOGIC_CLOSE_AND',
-	有好: 'LOGIC_CLOSE_OR',
-	都坏: 'LOGIC_CLOSE_NOR',
-	有坏: 'LOGIC_CLOSE_NAND',
+	蹭: TokenType.KEYWORD_USE,
+	就是: TokenType.KEYWORD_IS,
+	就像: TokenType.KEYWORD_LIKE,
+	高仿: TokenType.KEYWORD_CLONE,
+	才是: TokenType.KEYWORD_ONLY,
+	抢走: TokenType.KEYWORD_MOVE,
+	'好不好?': TokenType.KEYWORD_CONFIRM,
+	不然: TokenType.KEYWORD_ELSE,
+	玩耍: TokenType.KEYWORD_LOOP,
+	累了: TokenType.KEYWORD_BREAK,
+	想要: TokenType.KEYWORD_DEF,
+	扒: TokenType.KEYWORD_CALL,
+	叼回来: TokenType.KEYWORD_RETURN,
+	偷袭: TokenType.KEYWORD_AMBUSH,
+	好喵: TokenType.BOOLEAN,
+	坏喵: TokenType.BOOLEAN,
+	空碗: TokenType.NULL_LITERAL,
+	和: TokenType.LOGIC_AND,
+	或: TokenType.LOGIC_OR,
+	都好: TokenType.LOGIC_CLOSE_AND,
+	有好: TokenType.LOGIC_CLOSE_OR,
+	都坏: TokenType.LOGIC_CLOSE_NOR,
+	有坏: TokenType.LOGIC_CLOSE_NAND,
 } as const satisfies Record<string, TokenType>;
 export type Keyword = keyof typeof KEYWORDS;
-
-export const sortedKeywords = Object.keys(KEYWORDS).sort((a, b) => b.length - a.length) as Keyword[];
 export function isKeyword(symbol: string): symbol is Keyword {
 	return symbol in KEYWORDS;
 }
 
-export interface Token {
+export const sortedKeywords = Object.keys(KEYWORDS).sort((a, b) => b.length - a.length) as Keyword[];
+
+export const OP_SETS = {
+	ARITH: new Set(['+', '-', '*', '/']),
+	COMP: new Set(['==', '!=', '>', '<', '>=', '<=']),
+	COMP_E: new Set(['==', '!=']),
+};
+const TWO_CHAR_SYMBOLS = new Set(['==', '!=', '>=', '<=', '[=', '=]', '[#', '#]']);
+
+export type Token = {
 	type: TokenType;
 	value: string;
 	line: number;
 	col: number;
-}
+};
 
-export interface TokenizerOptions {
+export type TokenizerOptions = {
 	ignoreComments?: boolean;
 	convertFullWidth?: boolean;
-}
+};
 
 export function tokenize(sourceCode: string, options: TokenizerOptions): Token[] {
 	options.convertFullWidth ??= true;
@@ -97,22 +116,22 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 	let col = 1;
 	let cursor = 0;
 
+	const advance = (steps = 1) => {
+		for (let i = 0; i < steps; i++) {
+			if (sourceCode[cursor + i] === '\n') {
+				line++;
+				col = 1;
+			} else {
+				col++;
+			}
+		}
+		cursor += steps;
+	};
+
 	while (cursor < sourceCode.length) {
 		const startLine = line;
 		const startCol = col;
 		let char = sourceCode[cursor]!;
-
-		const advance = (steps = 1) => {
-			for (let i = 0; i < steps; i++) {
-				if (sourceCode[cursor + i] === '\n') {
-					line++;
-					col = 1;
-				} else {
-					col++;
-				}
-			}
-			cursor += steps;
-		};
 
 		if (/\s/.test(char)) {
 			advance();
@@ -139,7 +158,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 			if (nestingLevel !== 0) console.error('警告喵: 文件结尾有未闭合的悄悄话！');
 
 			if (!options?.ignoreComments) {
-				tokens.push({ type: 'COMMENT', value: commentContent, line: commentStartLine, col: commentStartCol });
+				tokens.push({ type: TokenType.COMMENT, value: commentContent, line: commentStartLine, col: commentStartCol });
 			}
 			continue;
 		}
@@ -157,29 +176,29 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 			tokens.push({ type: tokenType, value: matchedKeyword, line: startLine, col: startCol });
 			advance(matchedKeyword.length);
 
-			if (tokenType === 'KEYWORD_DEF') expectingFuncNameAfterParamEnd = true; // '想要'
+			if (tokenType === TokenType.KEYWORD_DEF) expectingFuncNameAfterParamEnd = true; // '想要'
 			continue;
 		}
 
 		const twoCharSymbol = sourceCode.substring(cursor, cursor + 2);
-		if (['[=', '=]', '[#', '#]', '==', '!=', '>=', '<='].includes(twoCharSymbol)) {
-			let type: TokenType = 'OPERATOR';
-			if (twoCharSymbol === '[=') type = 'PARAM_START';
-			if (twoCharSymbol === '=]') type = 'PARAM_END';
-			if (twoCharSymbol === '[#') type = 'BLOCK_START';
-			if (twoCharSymbol === '#]') type = 'BLOCK_END';
+		if (TWO_CHAR_SYMBOLS.has(twoCharSymbol)) {
+			let type: TokenType = TokenType.OPERATOR;
+			if (twoCharSymbol === '[=') type = TokenType.PARAM_START;
+			else if (twoCharSymbol === '=]') type = TokenType.PARAM_END;
+			else if (twoCharSymbol === '[#') type = TokenType.BLOCK_START;
+			else if (twoCharSymbol === '#]') type = TokenType.BLOCK_END;
 			tokens.push({ type, value: twoCharSymbol, line: startLine, col: startCol });
 			advance(2);
 
-			if (type !== 'PARAM_END' || !expectingFuncNameAfterParamEnd) expectingFuncNameAfterParamEnd = false;
+			if (type !== TokenType.PARAM_END) expectingFuncNameAfterParamEnd = false;
 			continue;
 		}
 
 		if ('+-*/><@~,'.includes(char)) {
-			let type: TokenType = 'OPERATOR';
-			if (char === ',') type = 'COMMA';
-			else if (char === '@') type = 'ACCESSOR';
-			else if (char === '~') type = 'TERMINATOR';
+			let type: TokenType = TokenType.OPERATOR;
+			if (char === ',') type = TokenType.COMMA;
+			else if (char === '@') type = TokenType.ACCESSOR;
+			else if (char === '~') type = TokenType.TERMINATOR;
 			tokens.push({ type, value: char, line: startLine, col: startCol });
 			advance();
 			continue;
@@ -191,7 +210,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 				numStr += sourceCode[cursor];
 				advance();
 			}
-			tokens.push({ type: 'NUMBER', value: numStr, line: startLine, col: startCol });
+			tokens.push({ type: TokenType.NUMBER, value: numStr, line: startLine, col: startCol });
 			continue;
 		}
 
@@ -204,7 +223,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 				advance();
 			}
 			advance();
-			tokens.push({ type: 'STRING', value: str, line: startLine, col: startCol });
+			tokens.push({ type: TokenType.STRING, value: str, line: startLine, col: startCol });
 			continue;
 		}
 
@@ -247,7 +266,12 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 
 			// 最后，统一创建 Token
 			if (identifier) {
-				tokens.push({ type: 'IDENTIFIER', value: identifier, line: identifierStartLine, col: identifierStartCol });
+				tokens.push({
+					type: TokenType.IDENTIFIER,
+					value: identifier,
+					line: identifierStartLine,
+					col: identifierStartCol,
+				});
 				if (expectingFuncNameAfterParamEnd) {
 					// 抓到了！这个标识符就是函数名喵！
 					functionNames.add(identifier);
@@ -261,7 +285,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 		advance();
 	}
 
-	tokens.push({ type: 'EOF', value: 'EndOfFile', line, col });
+	tokens.push({ type: TokenType.EOF, value: 'EndOfFile', line, col });
 	return repairCallTokens(tokens, functionNames);
 }
 
@@ -283,9 +307,9 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 
 		// 检查是否是需要修复的目标
 		if (
-			currentToken.type !== 'KEYWORD_CALL' || // 不是 '扒'
-			nextToken?.type !== 'IDENTIFIER' || // 后面无跟着的标识符
-			nextNextToken?.type === 'IDENTIFIER' // 后面跟着第二个标识符
+			currentToken.type !== TokenType.KEYWORD_CALL || // 不是 '扒'
+			nextToken?.type !== TokenType.IDENTIFIER || // 后面无跟着的标识符
+			nextNextToken?.type === TokenType.IDENTIFIER // 后面跟着第二个标识符
 		) {
 			// 不是需要修复的目标，或者是一个安全的 `扒 纸箱名 函数名`
 			repairedTokens.push(currentToken);
@@ -305,7 +329,7 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 
 			// 1. 创建“纸箱名” Token
 			const collectionToken: Token = {
-				type: 'IDENTIFIER',
+				type: TokenType.IDENTIFIER,
 				value: collectionName,
 				line: tokenToSplit.line,
 				col: tokenToSplit.col,
@@ -313,7 +337,7 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 
 			// 2. 创建“函数名” Token，注意计算新的列号
 			const functionToken: Token = {
-				type: 'IDENTIFIER',
+				type: TokenType.IDENTIFIER,
 				value: funcName,
 				line: tokenToSplit.line,
 				col: tokenToSplit.col + collectionName.length,

@@ -1,6 +1,7 @@
 // src/core/run/interpreter.ts
 
 import type * as AST from '../ast.js';
+import { NodeType } from '../ast.js';
 import { Environment } from './environment.js';
 import { type BuiltInFunctions, isBuiltInFunctionName } from '../builtIns.js';
 import { checkArithmeticOperation, checkComparisonOperation, getMeaoiuType, typeMap } from '../typedef.js';
@@ -19,11 +20,11 @@ const ReturnOrAmbush: Record<
 	(AST.ReturnStatement | AST.AmbushStatement)['type'],
 	{ emptySignal: ReturnValue | typeof CONTINUE_SIGNAL; valueHandler: (value: any) => any }
 > = {
-	ReturnStatement: {
+	[NodeType.ReturnStatement]: {
 		emptySignal: new ReturnValue(null),
 		valueHandler: value => new ReturnValue(value),
 	},
-	AmbushStatement: {
+	[NodeType.AmbushStatement]: {
 		emptySignal: CONTINUE_SIGNAL,
 		valueHandler: value => new LoopValue(value),
 	},
@@ -45,22 +46,22 @@ export async function evaluate(
 ): Promise<any> {
 	try {
 		switch (node.type) {
-			case 'NumericLiteral':
-			case 'StringLiteral':
-			case 'BooleanLiteral':
+			case NodeType.NumericLiteral:
+			case NodeType.StringLiteral:
+			case NodeType.BooleanLiteral:
 				return node.value;
-			case 'NullLiteral':
+			case NodeType.NullLiteral:
 				return null;
-			case 'Identifier':
+			case NodeType.Identifier:
 				return env.lookup(node.symbol);
-			case 'Program': {
+			case NodeType.Program: {
 				let lastEvaluatedInProgram: any;
 				for (const statement of node.body) {
 					lastEvaluatedInProgram = await evaluate(statement, env, builtIns, boundaryEnv);
 				}
 				return lastEvaluatedInProgram;
 			}
-			case 'BlockStatement': {
+			case NodeType.BlockStatement: {
 				const block = node;
 				const blockEnv = newEnvType !== NewEnvType.normal ? env : new Environment(env);
 				let lastEvaluated = null;
@@ -69,10 +70,10 @@ export async function evaluate(
 				for (const stmt of block.body) {
 					if (block.isCollection) {
 						// --- 纸箱的特殊求值规则 ---
-						if (stmt.type === 'VariableDeclaration') {
+						if (stmt.type === NodeType.VariableDeclaration) {
 							// 处理带 `蹭` 或隐式的 `a 就是 1`
 							await evaluate(stmt, blockEnv, builtIns, boundaryEnv);
-						} else if (stmt.type === 'ExpressionStatement') {
+						} else if (stmt.type === NodeType.ExpressionStatement) {
 							// 处理纯表达式，调用辅助函数
 							autoIndexCounter = await _evaluateCollectionElement(
 								stmt,
@@ -114,7 +115,7 @@ export async function evaluate(
 
 				return lastEvaluated;
 			}
-			case 'MemberAccessExpression': {
+			case NodeType.MemberAccessExpression: {
 				const memberExpr = node;
 
 				const collectionRef = await evaluate(memberExpr.object, env, builtIns, boundaryEnv);
@@ -137,7 +138,7 @@ export async function evaluate(
 
 				return collection.lookup(propValue);
 			}
-			case 'SequenceExpression': {
+			case NodeType.SequenceExpression: {
 				const seqExpr = node;
 				let accVal = env.resolveValue(await evaluate(seqExpr.sections[0]!, env, builtIns, boundaryEnv));
 
@@ -179,7 +180,7 @@ export async function evaluate(
 				}
 				return accVal;
 			}
-			case 'ArithmeticExpression': {
+			case NodeType.ArithmeticExpression: {
 				const binExpr = node;
 
 				const op = binExpr.operator;
@@ -204,7 +205,7 @@ export async function evaluate(
 				}
 				throw new Error(`是两块钱的运算符喵? ${binExpr.operator}`);
 			}
-			case 'ComparisonExpression': {
+			case NodeType.ComparisonExpression: {
 				const compExpr = node;
 				if (compExpr.expressions.length < 2) {
 					return env.resolveValue(await evaluate(compExpr.expressions[0]!, env, builtIns, boundaryEnv));
@@ -260,7 +261,7 @@ export async function evaluate(
 				}
 				return overallResult;
 			}
-			case 'LogicalExpression': {
+			case NodeType.LogicalExpression: {
 				const logExpr = node;
 				const leftVal = env.resolveValue(await evaluate(logExpr.left, env, builtIns, boundaryEnv));
 				switch (logExpr.operator) {
@@ -274,20 +275,20 @@ export async function evaluate(
 						return !(leftVal && env.resolveValue(await evaluate(logExpr.right, env, builtIns, boundaryEnv)));
 				}
 			}
-			case 'VariableDeclaration': {
+			case NodeType.VariableDeclaration: {
 				const varDec = node;
 				env.declare(varDec.identifier.symbol); // 声明变量名
 				// 若有初始化部分，则执行以赋值
 				if (varDec.initialization) return await evaluate(varDec.initialization, env, builtIns, boundaryEnv);
 				return null;
 			}
-			case 'AssignmentStatement': {
+			case NodeType.AssignmentStatement: {
 				const assignStmt = node;
 
 				let value = await evaluate(assignStmt.value, env, builtIns, boundaryEnv);
 				if (value instanceof ReturnValue) value = value.value;
 
-				if (assignStmt.assignee.type === 'MemberAccessExpression') {
+				if (assignStmt.assignee.type === NodeType.MemberAccessExpression) {
 					// 目标是 a@b 这种形式
 					const memberExpr = assignStmt.assignee;
 
@@ -332,20 +333,20 @@ export async function evaluate(
 				}
 				return target.scope.assign(target.name, value, assignStmt.kind);
 			}
-			case 'IfStatement': {
+			case NodeType.IfStatement: {
 				const isTrue = env.resolveValue(await evaluate(node.test, env, builtIns, boundaryEnv));
 				if (isTrue) return await evaluate(node.consequent, env, builtIns, boundaryEnv);
 				else if (node.alternate) return await evaluate(node.alternate, env, builtIns, boundaryEnv);
 				return null;
 			}
-			case 'LoopStatement': {
+			case NodeType.LoopStatement: {
 				while (true) {
 					const loopEnv = new Environment(env);
 					const result = await evaluate(
 						node.body,
 						loopEnv,
 						builtIns,
-						{ ...boundaryEnv, AmbushStatement: loopEnv },
+						{ ...boundaryEnv, [NodeType.AmbushStatement]: loopEnv },
 						NewEnvType.loop
 					);
 
@@ -357,15 +358,15 @@ export async function evaluate(
 				}
 				return null; // '累了' 退出后，循环表达式返回“空碗”
 			}
-			case 'BreakStatement':
+			case NodeType.BreakStatement:
 				return BREAK_SIGNAL;
-			case 'AmbushStatement':
-			case 'ReturnStatement': {
+			case NodeType.AmbushStatement:
+			case NodeType.ReturnStatement: {
 				if (!node.argument) return ReturnOrAmbush[node.type].emptySignal;
 
 				const value = await evaluate(node.argument, env, builtIns, boundaryEnv);
 
-				if (node.argument.type === 'Identifier') {
+				if (node.argument.type === NodeType.Identifier) {
 					const varName = node.argument.symbol;
 					const varRef = env.lookup(varName);
 					const sourceScope = varRef.scope;
@@ -379,12 +380,12 @@ export async function evaluate(
 
 				return ReturnOrAmbush[node.type].valueHandler(value);
 			}
-			case 'FunctionDeclaration': {
+			case NodeType.FunctionDeclaration: {
 				const funcDec = node;
 				env.declareFunction(funcDec.name.symbol, funcDec);
 				return;
 			}
-			case 'CallExpression': {
+			case NodeType.CallExpression: {
 				const callExpr = node;
 				const funcName = callExpr.callee.symbol;
 
@@ -416,10 +417,10 @@ export async function evaluate(
 				// 从函数定义的参数块中，按顺序提取出参数的名字
 				const paramNames = func.params.body
 					.map(stmt => {
-						if (stmt.type === 'ExpressionStatement' && stmt.expression.type === 'Identifier') {
+						if (stmt.type === NodeType.ExpressionStatement && stmt.expression.type === NodeType.Identifier) {
 							return stmt.expression.symbol;
 						}
-						if (stmt.type === 'VariableDeclaration') return stmt.identifier.symbol;
+						if (stmt.type === NodeType.VariableDeclaration) return stmt.identifier.symbol;
 						throw new Error(`[${stmt.line}:${stmt.col}] 运行错误喵: 贡品不能是奇怪的样子 ${stmt.type} 喵！`);
 					})
 					.filter(Boolean);
@@ -442,7 +443,7 @@ export async function evaluate(
 					func.body,
 					functionEnv,
 					builtIns,
-					{ ...boundaryEnv, ReturnStatement: functionEnv },
+					{ ...boundaryEnv, [NodeType.ReturnStatement]: functionEnv },
 					NewEnvType.func
 				);
 				if (result instanceof ReturnValue) return result.value;
@@ -451,7 +452,7 @@ export async function evaluate(
 				}
 				return null;
 			}
-			case 'UnaryExpression': {
+			case NodeType.UnaryExpression: {
 				const unaryExpr = node;
 				const argumentRef = await evaluate(unaryExpr.argument, env, builtIns, boundaryEnv);
 				const argumentValue = env.resolveValue(argumentRef);
@@ -473,10 +474,13 @@ export async function evaluate(
 				}
 				return null;
 			}
-			case 'ExpressionStatement':
+			case NodeType.ExpressionStatement:
 				return await evaluate(node.expression, env, builtIns, boundaryEnv);
-			default:
-				throw new Error(`[${node.line}:${node.col}] 运行错误喵: 不支持的节点类型 ${node.type} 喵！`);
+			case NodeType.ErrorNode:
+				throw new Error(`[${node.line}:${node.col}] 运行错误喵: ${node.message}`);
+			default: // 此处已推断为不可达
+				const n: never = node;
+				throw new Error(`运行错误喵: 不支持的节点类型喵！${n}`);
 		}
 	} catch (err) {
 		const errorMessage = err instanceof Error ? err.message : String(err);
@@ -503,16 +507,16 @@ async function _evaluateCollectionElement(
 	let kind: AST.AssignmentKind = 'Copy';
 	let valueToAssign: any;
 
-	if (expr.type === 'Identifier') {
+	if (expr.type === NodeType.Identifier) {
 		// 元素是 `a` -> 声明为 `a`，并创建引用
 		name = expr.symbol;
 		kind = 'Reference';
 		valueToAssign = await evaluateFn(expr, blockEnv, builtIns, boundaryEnv);
-	} else if (expr.type === 'UnaryExpression') {
+	} else if (expr.type === NodeType.UnaryExpression) {
 		// 元素是 `高仿 a` 或 `抢走 a`
 		valueToAssign = await evaluateFn(expr, blockEnv, builtIns, boundaryEnv); // 得到最终的值
 		kind = 'Copy';
-		if (expr.argument.type === 'Identifier') name = expr.argument.symbol;
+		if (expr.argument.type === NodeType.Identifier) name = expr.argument.symbol;
 	} else {
 		// 元素是字面量（'毛线球'）或嵌套纸箱（[=...=]）
 		valueToAssign = await evaluateFn(expr, blockEnv, builtIns, boundaryEnv);
