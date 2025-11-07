@@ -8,7 +8,7 @@ import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
 import type { SymbolInfo } from './utils/symbolTable.js';
 import { buildParentMap, isNodeArray } from './utils/astUtils.js';
-import { typeMap } from '../core/typedef.js';
+import { MeaoiuType, typeNames } from '../core/typedef.js';
 
 /**
  * 内联提示的位置
@@ -82,16 +82,16 @@ export function getInlayHints(sourceCode: string): InlayHint[] {
 		if (
 			node.type !== NodeType.Identifier ||
 			symbolInfo.kind === 'function' ||
-			(symbolInfo.type === typeMap.unknown && !symbolInfo.valueRef)
+			(symbolInfo.type === MeaoiuType.UNKNOWN && !symbolInfo.valueRef)
 		) {
 			return;
 		}
 		const isReference = symbolInfo.references.includes(node);
 		const { name, isMoved } = findUltimateSource(symbolInfo);
 
-		const moveMark = !isMoved ? '' : symbolInfo.type === typeMap.unknown ? '!' : '_';
+		const moveMark = !isMoved ? '' : symbolInfo.type === MeaoiuType.UNKNOWN ? '!' : '_';
 		const sourceName = name === symbolInfo.name ? '' : `${isMoved ? '' : '*'}${name}`;
-		const symbolType = isReference || symbolInfo.type === typeMap.unknown ? '' : `:${symbolInfo.type}`;
+		const symbolType = isReference || symbolInfo.type === MeaoiuType.UNKNOWN ? '' : `:${typeNames[symbolInfo.type]}`;
 		hints.push({
 			position: { line: node.line - 1, character: node.endCol - 1 },
 			label: `${moveMark}${sourceName}${symbolType}`,

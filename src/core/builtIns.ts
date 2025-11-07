@@ -1,7 +1,7 @@
 // src/core/builtIns.ts
 
 import type { MeaoiuRuntimeIO } from './run/io.js';
-import { getMeaoiuType, typeMap } from './typedef.js';
+import { getMeaoiuType, MeaoiuType, typeNames } from './typedef.js';
 
 export const builtInFunctionNames = [
 	'喵',
@@ -43,7 +43,7 @@ export const createBuiltInFunctions = (io: MeaoiuRuntimeIO): BuiltInFunctions =>
 		return Number.isNaN(num) ? null : num;
 	},
 	喵译: args => String(args[0]),
-	嗅嗅: args => getMeaoiuType(args[0]),
+	嗅嗅: args => typeNames[getMeaoiuType(args[0])],
 
 	// Logic
 	才怪: args => !args[0], // not
@@ -58,7 +58,7 @@ export const createBuiltInFunctions = (io: MeaoiuRuntimeIO): BuiltInFunctions =>
 	// Collection & String
 	找尾巴: args => {
 		const target = args[0];
-		return getMeaoiuType(target) === typeMap.collection ? target.orderedVariableNames.length : String(target).length;
+		return getMeaoiuType(target) === MeaoiuType.COLLECTION ? target.orderedVariableNames.length : String(target).length;
 	},
 	// String
 	喵语连珠: args => args.map(String).join(''),

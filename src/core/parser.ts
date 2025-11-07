@@ -2,7 +2,7 @@
 
 import { OP_SETS, type Token, TokenType } from './tokenizer.js';
 import type * as AST from './ast.js';
-import { NodeType } from './ast.js';
+import { AssignmentKind, LogicalOperator, NodeType } from './ast.js';
 
 export interface SyntaxError {
 	message: string;
@@ -401,14 +401,14 @@ export class Parser {
 
 	private parseAssignmentStatement(assignee: AST.Expression): AST.AssignmentStatement {
 		const aT = this.advance();
-		const assignMap: Partial<Record<TokenType, AST.AssignmentKind>> = {
-			[TokenType.KEYWORD_IS]: 'Reference',
-			[TokenType.KEYWORD_LIKE]: 'Copy',
-			[TokenType.KEYWORD_ONLY]: 'Move',
+		const assignMap: Partial<Record<TokenType, AssignmentKind>> = {
+			[TokenType.KEYWORD_IS]: AssignmentKind.REFERENCE,
+			[TokenType.KEYWORD_LIKE]: AssignmentKind.COPY,
+			[TokenType.KEYWORD_ONLY]: AssignmentKind.MOVE,
 		};
 
 		const k = assignMap[aT.type];
-		if (!k) throw new Error(`[${aT.line}:${aT.col}] 语法错误喵: 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
+		if (k === undefined) throw new Error(`[${aT.line}:${aT.col}] 语法错误喵: 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
 
 		const v = this.parseExpression();
 		const eL = this.endLoc();
@@ -622,11 +622,11 @@ export class Parser {
 			switch (this.current().type) {
 				case TokenType.LOGIC_CLOSE_OR:
 					this.advance();
-					o = 'OR';
+					o = LogicalOperator.OR;
 					break;
 				case TokenType.LOGIC_CLOSE_NAND:
 					this.advance();
-					o = 'NAND';
+					o = LogicalOperator.NAND;
 					break;
 				default:
 					const prevToken = this.tokens[this.position - 1]!;
@@ -662,11 +662,11 @@ export class Parser {
 			switch (this.current().type) {
 				case TokenType.LOGIC_CLOSE_AND:
 					this.advance();
-					o = 'AND';
+					o = LogicalOperator.AND;
 					break;
 				case TokenType.LOGIC_CLOSE_NOR:
 					this.advance();
-					o = 'NOR';
+					o = LogicalOperator.NOR;
 					break;
 				default:
 					const prevToken = this.tokens[this.position - 1]!;
@@ -820,7 +820,7 @@ export class Parser {
 	private parseUnaryExpression(): AST.Expression {
 		if (this.current().type === TokenType.KEYWORD_CLONE || this.current().type === TokenType.KEYWORD_MOVE) {
 			const sT = this.advance();
-			const op: AST.UnaryOperator = sT.type === TokenType.KEYWORD_CLONE ? 'Copy' : 'Move';
+			const op: AST.UnaryOperator = sT.type === TokenType.KEYWORD_CLONE ? AssignmentKind.COPY : AssignmentKind.MOVE;
 			// 递归调用，这样就可以处理像“高仿 高仿 a”这样的写法
 			const arg = this.parseUnaryExpression();
 

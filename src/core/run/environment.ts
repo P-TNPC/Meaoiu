@@ -1,5 +1,6 @@
 // src/core/run/environment.ts
 import type * as AST from '../ast.js';
+import { AssignmentKind } from '../ast.js';
 import logger from '../run/logger.js';
 
 type VariableValue = { isReference: true; scope: Environment; name: string } | null; // 允许在声明时临时为 null
@@ -41,7 +42,7 @@ export class Environment {
 		const executionScope = this;
 
 		// 如果赋值操作是 'Move'，需要标记源变量为 "已移动"
-		if (value?.isVariableReference && kind === 'Move') value.scope.variables.get(value.name)!.moved = true;
+		if (kind === AssignmentKind.MOVE && value?.isVariableReference) value.scope.variables.get(value.name)!.moved = true;
 
 		// 查找并追踪目标的最终存放位置
 		const initialTargetScope = executionScope.findVariableScope(name);
@@ -65,7 +66,7 @@ export class Environment {
 			`[ENV #${executionScope.id}] ASSIGN: '${finalTargetName}' in Env #${finalTargetScope.id}. (kind: ${kind}) VALUE:`,
 			finalValue
 		);
-		if (kind === 'Reference') {
+		if (kind === AssignmentKind.REFERENCE) {
 			if (value?.isVariableReference) {
 				finalTargetScope.variables.set(finalTargetName, {
 					value: { isReference: true, scope: value.scope, name: value.name },
@@ -73,7 +74,7 @@ export class Environment {
 				});
 				return finalValue;
 			}
-		} else if (kind === 'Copy' && finalValue instanceof Environment) {
+		} else if (kind === AssignmentKind.COPY && finalValue instanceof Environment) {
 			// 复制一个纸箱，实际上是创建一个“视图”
 			finalValue = finalValue.createShallowCopy();
 		}
@@ -117,10 +118,9 @@ export class Environment {
 			if (originalName === resolvedName) {
 				// 如果起点和终点是同一个，说明没有复杂的引用链
 				throw new Error(`喵呜！变量「${originalName}」里的东西被拿走了，现在是只空碗喵！`);
-			} else {
-				// 如果不同，说明有关联
-				throw new Error(`喵呜！碰不到「${originalName}」，因为它的本体「${resolvedName}」被拿走了喵！`);
 			}
+			// 如果不同，说明有关联
+			throw new Error(`喵呜！碰不到「${originalName}」，因为它的本体「${resolvedName}」被拿走了喵！`);
 		}
 		logger.debug(`[ENV #${this.id}] LOOKUP: '${resolvedName}'. Found in Env #${scope.id}.`);
 

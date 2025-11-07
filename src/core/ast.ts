@@ -89,9 +89,19 @@ export type Expression =
 	| UnaryExpression
 	| ErrorNode;
 
-export type UnaryOperator = 'Copy' | 'Move';
-export type AssignmentKind = 'Reference' | UnaryOperator;
-export type LogicalOperator = 'AND' | 'OR' | 'NAND' | 'NOR';
+export const enum AssignmentKind {
+	REFERENCE,
+	COPY,
+	MOVE,
+}
+export type UnaryOperator = AssignmentKind.COPY | AssignmentKind.MOVE;
+
+export const enum LogicalOperator {
+	AND,
+	OR,
+	NAND,
+	NOR,
+}
 
 export interface UnaryExpression extends AstNode<NodeType.UnaryExpression> {
 	operator: UnaryOperator;

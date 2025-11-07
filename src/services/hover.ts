@@ -5,6 +5,7 @@ import { Parser } from '../core/parser.js';
 import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
 import { findIdentifierAt } from './utils/astUtils.js';
+import { typeNames } from '../core/typedef.js';
 
 type HoverInfo = {
 	text: string;
@@ -27,7 +28,7 @@ export function getHoverInfo(sourceCode: string, position: { line: number; col: 
 	if (!symbolInfo) return undefined;
 
 	const declaration = symbolInfo.declarations[0];
-	let hoverText = `**(${symbolInfo.kind}) ${symbolInfo.name} : ${symbolInfo.type}**`;
+	let hoverText = `**(${symbolInfo.kind}) ${symbolInfo.name} : ${typeNames[symbolInfo.type]}**`;
 	if(symbolInfo.isMoved) hoverText += `\n\n(源被标记为已移动)`;
 	if (declaration) hoverText += `\n\n在 L${declaration.line}:${declaration.col} 处声明`;
 	else hoverText += `\n\n(这是一个内置计谋)`;

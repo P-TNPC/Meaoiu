@@ -1,7 +1,7 @@
 // src/services/formatting.ts
 
 import type * as AST from '../core/ast.js';
-import { NodeType } from '../core/ast.js';
+import { AssignmentKind, LogicalOperator, NodeType } from '../core/ast.js';
 import { tokenize, isKeyword } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
 
@@ -96,7 +96,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 		}
 		case NodeType.AssignmentStatement: {
 			const n = node;
-			const k = n.kind === 'Move' ? '才是' : n.kind === 'Copy' ? '就像' : '就是';
+			const k = n.kind === AssignmentKind.MOVE ? '才是' : n.kind === AssignmentKind.COPY ? '就像' : '就是';
 			content = `${indent(options)}${printNodeContent(n.assignee, options)} ${k} ${printNodeContent(n.value, options)}`;
 			break;
 		}
@@ -146,7 +146,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 		}
 		case NodeType.UnaryExpression: {
 			const n = node;
-			const op = n.operator === 'Copy' ? '高仿' : '抢走';
+			const op = n.operator === AssignmentKind.COPY ? '高仿' : '抢走';
 			content = `${op} ${printNodeContent(n.argument, options)}`;
 			break;
 		}
@@ -167,8 +167,18 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 		}
 		case NodeType.LogicalExpression: {
 			const n = node;
-			const o = { AND: '和', OR: '或', NOR: '和', NAND: '或' };
-			const c = { AND: '都好', OR: '有好', NOR: '都坏', NAND: '有坏' };
+			const o = {
+				[LogicalOperator.AND]: '和',
+				[LogicalOperator.OR]: '或',
+				[LogicalOperator.NOR]: '和',
+				[LogicalOperator.NAND]: '或',
+			};
+			const c = {
+				[LogicalOperator.AND]: '都好',
+				[LogicalOperator.OR]: '有好',
+				[LogicalOperator.NOR]: '都坏',
+				[LogicalOperator.NAND]: '有坏',
+			};
 			content = `${printNodeContent(n.left, options)} ${o[n.operator]} ${printNodeContent(n.right, options)} ${
 				c[n.operator]
 			}`;

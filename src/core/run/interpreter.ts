@@ -1,10 +1,10 @@
 // src/core/run/interpreter.ts
 
 import type * as AST from '../ast.js';
-import { NodeType } from '../ast.js';
+import { AssignmentKind, LogicalOperator, NodeType } from '../ast.js';
 import { Environment } from './environment.js';
 import { type BuiltInFunctions, isBuiltInFunctionName } from '../builtIns.js';
-import { checkArithmeticOperation, checkComparisonOperation, getMeaoiuType, typeMap } from '../typedef.js';
+import { checkArithmeticOperation, checkComparisonOperation, getMeaoiuType, MeaoiuType, typeNames } from '../typedef.js';
 import logger from './logger.js';
 
 const BREAK_SIGNAL = { type: 'BREAK_SIGNAL' }; // '累了~'
@@ -123,7 +123,9 @@ export async function evaluate(
 
 				if (!(collection instanceof Environment)) {
 					throw new Error(
-						`[${memberExpr.object.line}:${memberExpr.object.col}] 运行错误喵: 用 '@' 只能从${typeMap.collection}里拿东西喵！`
+						`[${memberExpr.object.line}:${memberExpr.object.col}] 运行错误喵: 用 '@' 只能从${
+							typeNames[MeaoiuType.COLLECTION]
+						}里拿东西喵！`
 					);
 				}
 
@@ -132,7 +134,9 @@ export async function evaluate(
 
 				if (typeof propValue !== 'number' && typeof propValue !== 'string') {
 					throw new Error(
-						`[${memberExpr.property.line}:${memberExpr.property.col}] 运行错误喵: ${typeMap.collection}的索引必须是${typeMap.number}或${typeMap.string}喵！`
+						`[${memberExpr.property.line}:${memberExpr.property.col}] 运行错误喵: ${
+							typeNames[MeaoiuType.COLLECTION]
+						}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${typeNames[MeaoiuType.STRING]}喵！`
 					);
 				}
 
@@ -195,7 +199,7 @@ export async function evaluate(
 
 				switch (op) {
 					case '+':
-						return leftType === typeMap.collection ? leftVal.createMergedView(rightVal) : leftVal + rightVal;
+						return leftType === MeaoiuType.COLLECTION ? leftVal.createMergedView(rightVal) : leftVal + rightVal;
 					case '-':
 						return leftVal - rightVal;
 					case '*':
@@ -265,13 +269,13 @@ export async function evaluate(
 				const logExpr = node;
 				const leftVal = env.resolveValue(await evaluate(logExpr.left, env, builtIns, boundaryEnv));
 				switch (logExpr.operator) {
-					case 'AND':
+					case LogicalOperator.AND:
 						return leftVal && env.resolveValue(await evaluate(logExpr.right, env, builtIns, boundaryEnv));
-					case 'OR':
+					case LogicalOperator.OR:
 						return leftVal || env.resolveValue(await evaluate(logExpr.right, env, builtIns, boundaryEnv));
-					case 'NOR':
+					case LogicalOperator.NOR:
 						return !(leftVal || env.resolveValue(await evaluate(logExpr.right, env, builtIns, boundaryEnv)));
-					case 'NAND':
+					case LogicalOperator.NAND:
 						return !(leftVal && env.resolveValue(await evaluate(logExpr.right, env, builtIns, boundaryEnv)));
 				}
 			}
@@ -297,7 +301,9 @@ export async function evaluate(
 					const collection = env.resolveValue(collectionRef);
 					if (!(collection instanceof Environment)) {
 						throw new Error(
-							`[${memberExpr.object.line}:${memberExpr.object.col}] 运行错误喵: 只能给${typeMap.collection}的成员赋值喵！`
+							`[${memberExpr.object.line}:${memberExpr.object.col}] 运行错误喵: 只能给${
+								typeNames[MeaoiuType.COLLECTION]
+							}的成员赋值喵！`
 						);
 					}
 
@@ -314,7 +320,9 @@ export async function evaluate(
 						key = propValue;
 					} else {
 						throw new Error(
-							`[${memberExpr.property.line}:${memberExpr.property.col}] 运行错误喵: ${typeMap.collection}的索引必须是${typeMap.number}或${typeMap.string}喵！`
+							`[${memberExpr.property.line}:${memberExpr.property.col}] 运行错误喵: ${
+								typeNames[MeaoiuType.COLLECTION]
+							}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${typeNames[MeaoiuType.STRING]}喵！`
 						);
 					}
 
@@ -408,7 +416,9 @@ export async function evaluate(
 				const func = env.lookupFunction(funcName);
 				if (!func) {
 					throw new Error(
-						`[${callExpr.callee.line}:${callExpr.callee.col}] 运行错误喵: 没有叫「${funcName}」的${typeMap.function}喵！`
+						`[${callExpr.callee.line}:${callExpr.callee.col}] 运行错误喵: 没有叫「${funcName}」的${
+							typeNames[MeaoiuType.FUNCTION]
+						}喵！`
 					);
 				}
 
@@ -448,7 +458,7 @@ export async function evaluate(
 				);
 				if (result instanceof ReturnValue) return result.value;
 				if (result === BREAK_SIGNAL) {
-					console.warn(`警告喵: 在${typeMap.function} '${funcName}' 中，说'累了'也要继续玩喵。`);
+					console.warn(`警告喵: 在${typeNames[MeaoiuType.FUNCTION]} '${funcName}' 中，说'累了'也要继续玩喵。`);
 				}
 				return null;
 			}
@@ -457,13 +467,13 @@ export async function evaluate(
 				const argumentRef = await evaluate(unaryExpr.argument, env, builtIns, boundaryEnv);
 				const argumentValue = env.resolveValue(argumentRef);
 
-				if (unaryExpr.operator === 'Copy') {
+				if (unaryExpr.operator === AssignmentKind.COPY) {
 					// 高仿
 					if (argumentValue instanceof Environment) return argumentValue.createShallowCopy();
 					return argumentValue;
 				}
 
-				if (unaryExpr.operator === 'Move') {
+				if (unaryExpr.operator === AssignmentKind.MOVE) {
 					// 抢走
 					if (!argumentRef?.isVariableReference) {
 						throw new Error(`[${node.line}:${node.col}] 运行错误喵: 只能抢走一个变量，不能抢走一个表达式结果喵！`);
@@ -504,23 +514,23 @@ async function _evaluateCollectionElement(
 	const expr = stmt.expression;
 
 	let name: string | null = null;
-	let kind: AST.AssignmentKind = 'Copy';
+	let kind: AssignmentKind = AssignmentKind.COPY;
 	let valueToAssign: any;
 
 	if (expr.type === NodeType.Identifier) {
 		// 元素是 `a` -> 声明为 `a`，并创建引用
 		name = expr.symbol;
-		kind = 'Reference';
+		kind = AssignmentKind.REFERENCE;
 		valueToAssign = await evaluateFn(expr, blockEnv, builtIns, boundaryEnv);
 	} else if (expr.type === NodeType.UnaryExpression) {
 		// 元素是 `高仿 a` 或 `抢走 a`
 		valueToAssign = await evaluateFn(expr, blockEnv, builtIns, boundaryEnv); // 得到最终的值
-		kind = 'Copy';
+		kind = AssignmentKind.COPY;
 		if (expr.argument.type === NodeType.Identifier) name = expr.argument.symbol;
 	} else {
 		// 元素是字面量（'毛线球'）或嵌套纸箱（[=...=]）
 		valueToAssign = await evaluateFn(expr, blockEnv, builtIns, boundaryEnv);
-		kind = 'Copy';
+		kind = AssignmentKind.COPY;
 	}
 
 	// 如果没有显式名字，就自动生成一个防碰撞的名字
@@ -531,7 +541,9 @@ async function _evaluateCollectionElement(
 	}
 
 	if (blockEnv.variables.has(name)) {
-		throw new Error(`[${stmt.line}:${stmt.col}] 运行错误喵: ${typeMap.collection}里已经有一个叫做「${name}」的玩具了喵！`);
+		throw new Error(
+			`[${stmt.line}:${stmt.col}] 运行错误喵: ${typeNames[MeaoiuType.COLLECTION]}里已经有一个叫做「${name}」的玩具了喵！`
+		);
 	}
 
 	// 将这个元素“声明”到纸箱的环境中
