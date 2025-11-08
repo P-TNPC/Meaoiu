@@ -1,4 +1,5 @@
 // src/core/run/environment.ts
+
 import type * as AST from '../ast.js';
 import { AssignmentKind } from '../ast.js';
 import logger from '../run/logger.js';
@@ -27,12 +28,11 @@ export class Environment {
 	/**
 	 * 声明新变量（不包含赋值）。
 	 */
-	public declare(name: string) {
+	public declare(name: string): void {
 		if (this.variables.has(name)) throw new Error(`变量 '${name}' 已经被“蹭”过一次了喵！`);
 		logger.debug(`[ENV #${this.id}] DECLARE: '${name}'`);
 		this.variables.set(name, { value: null, moved: false });
 		this.orderedVariableNames.push(name);
-		return null;
 	}
 
 	/**
@@ -83,7 +83,7 @@ export class Environment {
 		return finalValue;
 	}
 
-	public declareReference(name: string, targetScope: Environment, targetName: string) {
+	public declareReference(name: string, targetScope: Environment, targetName: string): void {
 		if (this.variables.has(name)) throw new Error(`变量 '${name}' 已经被“蹭”过一次了喵！`);
 		this.variables.set(name, {
 			value: { isReference: true, scope: targetScope, name: targetName },
@@ -136,8 +136,8 @@ export class Environment {
 		return undefined;
 	}
 
-	public resolveValue(value: any): any {
-		if (value?.isVariableReference) return value.value;
+	public resolveValue(value: unknown): any {
+		if ((value as VariableReference)?.isVariableReference) return (value as VariableReference).value;
 		return value;
 	}
 
@@ -195,12 +195,10 @@ export class Environment {
 				// 总是添加并重命名自动键
 				const newAutoKey = `}auto_${autoIndexCounter++}{`;
 				newEnv.declareReference(newAutoKey, originalVarRef.scope, originalVarRef.name);
-			} else {
+			} else if (!addedKeys.has(varName)) {
 				// 用户定义的键，检查冲突
-				if (!addedKeys.has(varName)) {
-					newEnv.declareReference(varName, originalVarRef.scope, originalVarRef.name);
-					addedKeys.add(varName);
-				}
+				newEnv.declareReference(varName, originalVarRef.scope, originalVarRef.name);
+				addedKeys.add(varName);
 			}
 		}
 

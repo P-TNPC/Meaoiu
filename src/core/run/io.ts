@@ -2,7 +2,7 @@
 
 // I/O 接口
 export type MeaoiuRuntimeIO = {
-	print: (args: any[]) => void;
+	print: (args: unknown[]) => void;
 	prompt: (question: string) => Promise<string>;
 }
 

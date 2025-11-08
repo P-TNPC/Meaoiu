@@ -2,23 +2,23 @@
 
 import type * as AST from '../ast.js';
 import { AssignmentKind, LogicalOperator, NodeType } from '../ast.js';
-import { Environment } from './environment.js';
 import { type BuiltInFunctions, isBuiltInFunctionName } from '../builtIns.js';
 import { checkArithmeticOperation, checkComparisonOperation, getMeaoiuType, MeaoiuType, typeNames } from '../typedef.js';
+import { Environment } from './environment.js';
 import logger from './logger.js';
 
-const BREAK_SIGNAL = { type: 'BREAK_SIGNAL' }; // '累了~'
-const CONTINUE_SIGNAL = { type: 'CONTINUE_SIGNAL' }; //'偷袭~'
+const BREAK_SIGNAL = { type: 'BREAK_SIGNAL' } as const; // '累了~'
+const CONTINUE_SIGNAL = { type: 'CONTINUE_SIGNAL' } as const; //'偷袭~'
 class ReturnValue {
-	constructor(public value: any) {}
+	constructor(public value: unknown) {}
 } // '叼回来 [值]~'
 class LoopValue {
-	constructor(public value: any) {}
+	constructor(public value: unknown) {}
 } // '偷袭 <值>~'
 
 const ReturnOrAmbush: Record<
 	(AST.ReturnStatement | AST.AmbushStatement)['type'],
-	{ emptySignal: ReturnValue | typeof CONTINUE_SIGNAL; valueHandler: (value: any) => any }
+	{ emptySignal: ReturnValue | typeof CONTINUE_SIGNAL; valueHandler: (value: unknown) => unknown }
 > = {
 	[NodeType.ReturnStatement]: {
 		emptySignal: new ReturnValue(null),
@@ -310,20 +310,22 @@ export async function evaluate(
 					// 找到索引/键
 					const propValue = env.resolveValue(await evaluate(memberExpr.property, env, builtIns, boundaryEnv));
 					let key: string;
-					if (typeof propValue === 'number') {
-						// 数字索引超出范围，转为字符串键
-						if (propValue < 1 || propValue > collection.orderedVariableNames.length) key = String(propValue);
-						// 索引存在，用它在有序列表里的名字
-						else key = collection.orderedVariableNames[propValue - 1]!;
-					} else if (typeof propValue === 'string') {
-						// 索引是字符串，直接用
-						key = propValue;
-					} else {
-						throw new Error(
-							`[${memberExpr.property.line}:${memberExpr.property.col}] 运行错误喵: ${
-								typeNames[MeaoiuType.COLLECTION]
-							}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${typeNames[MeaoiuType.STRING]}喵！`
-						);
+					switch (typeof propValue) {
+						case 'string': // 索引是字符串，直接用
+							key = propValue;
+							break;
+						case 'number': // 索引是数字
+							// 数字索引超出范围，转为字符串键
+							if (propValue < 1 || propValue > collection.orderedVariableNames.length) key = String(propValue);
+							// 索引存在，用它在有序列表里的名字
+							else key = collection.orderedVariableNames[propValue - 1]!;
+							break;
+						default:
+							throw new Error(
+								`[${memberExpr.property.line}:${memberExpr.property.col}] 运行错误喵: ${
+									typeNames[MeaoiuType.COLLECTION]
+								}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${typeNames[MeaoiuType.STRING]}喵！`
+							);
 					}
 
 					// 检查是“赋值”还是“扩充”
@@ -391,7 +393,7 @@ export async function evaluate(
 			case NodeType.FunctionDeclaration: {
 				const funcDec = node;
 				env.declareFunction(funcDec.name.symbol, funcDec);
-				return;
+				return null;
 			}
 			case NodeType.CallExpression: {
 				const callExpr = node;

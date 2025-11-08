@@ -2,6 +2,8 @@
 
 import { Environment } from './run/environment.js';
 
+export type MeaoiuValue = number | string | boolean | null | Environment;
+
 export const enum MeaoiuType {
 	NUMBER, // 摸数
 	STRING, // 闲话
