@@ -1,21 +1,16 @@
 // src/core/parser.ts
 
-import { OP_SETS, type Token, TokenType } from './tokenizer.js';
 import type * as AST from './ast.js';
 import { AssignmentKind, LogicalOperator, NodeType } from './ast.js';
-
-export interface SyntaxError {
-	message: string;
-	line: number;
-	col: number;
-}
+import { MeaoiuError, errorFrom } from './error.js';
+import { OP_ARITH, OP_COMP, OP_COMP_E, type Token, TokenType } from './tokenizer.js';
 
 export class Parser {
 	private mode: 'strict' | 'tolerant';
 	private tokens: Token[];
 	private position = 0;
 	private blockDepth = 0;
-	public errors: SyntaxError[] = [];
+	public errors: MeaoiuError[] = [];
 
 	// 悄悄话缓存：advance / drainCommentsAhead 会把遇到的 COMMENT 放进这里
 	private commentBuffer: Token[] = [];
@@ -128,18 +123,9 @@ export class Parser {
 		const anchorCol = prev.col + prev.value.length;
 
 		const errMsg = `语法错误喵: ${type === TokenType.TERMINATOR ? `在 '${prev.value}' 后面需要一个 '~' 结尾喵!` : message}`;
+		const error = new MeaoiuError({ message: errMsg, line: anchorLine, col: anchorCol });
 
-		if (this.mode === 'strict') {
-			const errMsgWithLocation = `[${anchorLine}:${anchorCol}] ${errMsg}`;
-			throw new Error(errMsgWithLocation);
-		}
-
-		const error: SyntaxError = {
-			message: errMsg,
-			line: anchorLine,
-			col: anchorCol,
-		};
-
+		if (this.mode === 'strict') throw error;
 		// tolerant 模式记录错误
 		this.errors.push(error);
 
@@ -149,7 +135,7 @@ export class Parser {
 
 	private endLoc(token?: Token): { endLine: number; endCol: number } {
 		if (!token) token = this.tokens[this.position - 1] ?? this.current();
-		return { endLine: token.line, endCol: token.col + token.value.length };
+		return { endLine: token.line, endCol: token.col + token.value.length - 1 };
 	}
 
 	private synchronize(): void {
@@ -166,11 +152,7 @@ export class Parser {
 
 			if (currentType === TokenType.BLOCK_END) {
 				if (this.blockDepth > 0) return;
-				this.errors.push({
-					message: `这个 '${this.current().value}' 被孤立了喵!`,
-					line: this.current().line,
-					col: this.current().col,
-				});
+				this.errors.push(errorFrom(this.current(), `语法错误喵: 这个 '${this.current().value}' 被孤立了喵!`));
 				this.blockDepth = 0; // 龟苓膏之术
 			}
 
@@ -210,32 +192,11 @@ export class Parser {
 		if (!moved && this.current().type !== TokenType.EOF) this.advance();
 	}
 
-	private formatError(e: Error): SyntaxError {
-		const match = e.message.match(/\[(\d+):(\d+)\]/);
-		if (match) {
-			const [, rawLine, rawCol] = match;
-			// 移除匹配到的位置信息部分
-			const message = e.message.replace(match[0], '').trim();
-			const line = rawLine ? parseInt(rawLine, 10) : this.current().line;
-			const col = rawCol ? parseInt(rawCol, 10) : this.current().col;
-			return { message, line, col };
-		}
-		const { line, col } = this.current();
-		return { message: e.message, line, col };
+	private createErrorNode({ message, line, col, endLine, endCol }: MeaoiuError): AST.ErrorNode {
+		return { type: NodeType.ErrorNode, message, line, col, endLine, endCol };
 	}
 
-	private createErrorNode(error: SyntaxError): AST.ErrorNode {
-		return {
-			type: NodeType.ErrorNode,
-			message: error.message,
-			line: error.line,
-			col: error.col,
-			endLine: error.line,
-			endCol: error.col,
-		};
-	}
-
-	public parse(): { program: AST.Program; errors: SyntaxError[] } {
+	public parse(): { program: AST.Program; errors: MeaoiuError[] } {
 		const startToken = this.current();
 		const program: AST.Program = {
 			type: NodeType.Program,
@@ -360,7 +321,7 @@ export class Parser {
 					};
 					break;
 				case TokenType.BLOCK_END:
-					throw new Error(`[${sT.line}:${sT.col}] 假的语句喵!`);
+					throw errorFrom(sT, '语法错误喵: 假的语句喵!');
 				default:
 					const expr = this.parseExpression();
 
@@ -391,8 +352,8 @@ export class Parser {
 			this.collectTrailingComments(s, termTok);
 			return s;
 		} catch (e) {
-			if (this.mode !== 'tolerant') throw e;
-			const error = e instanceof Error ? this.formatError(e) : this.formatError(new Error(String(e)));
+			const error = e instanceof MeaoiuError ? e : errorFrom(sT, e instanceof Error ? e.message : String(e));
+			if (this.mode !== 'tolerant') throw error;
 			this.errors.push(error);
 			this.synchronize();
 			return this.createErrorNode(error);
@@ -408,7 +369,7 @@ export class Parser {
 		};
 
 		const k = assignMap[aT.type];
-		if (k === undefined) throw new Error(`[${aT.line}:${aT.col}] 语法错误喵: 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
+		if (k === undefined) throw errorFrom(aT, `语法错误喵: 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
 
 		const v = this.parseExpression();
 		const eL = this.endLoc();
@@ -462,7 +423,7 @@ export class Parser {
 				if (this.tokens[pP]?.type === TokenType.KEYWORD_CONFIRM) alternate = this.parseInvertedIfStatement();
 				else alternate = this.parseBlockStatement();
 			} else {
-				throw new Error(`[${this.current().line}:${this.current().col}] '不然' 后面必须跟着一个想法 '[#...#]' 喵!`);
+				throw errorFrom(this.current(), `语法错误喵: '不然' 后面必须跟着一个想法 '[#...#]' 喵!`);
 			}
 		}
 
@@ -522,7 +483,7 @@ export class Parser {
 	}
 
 	private parseBlockStatement(isCollection: boolean = false): AST.BlockStatement {
-		const startToken = isCollection
+		const { line, col } = isCollection
 			? this.expect(TokenType.PARAM_START, '纸箱或参数列表需要以 [= 开头喵')
 			: this.expect(TokenType.BLOCK_START, '想法需要以 [# 开头喵');
 
@@ -550,14 +511,7 @@ export class Parser {
 		const endToken = this.expect(endTokenType, `${blockName}需要以 ${isCollection ? '=]' : '#]'} 结尾喵`);
 		this.blockDepth--;
 
-		return {
-			type: NodeType.BlockStatement,
-			body,
-			isCollection,
-			line: startToken.line,
-			col: startToken.col,
-			...this.endLoc(endToken),
-		};
+		return { type: NodeType.BlockStatement, body, isCollection, line, col, ...this.endLoc(endToken) };
 	}
 
 	private parseCollectionElement(): AST.Statement {
@@ -600,10 +554,10 @@ export class Parser {
 			try {
 				return this.parseLogicalOrExpression();
 			} catch (e) {
-				const error = e instanceof Error ? this.formatError(e) : this.formatError(new Error(String(e)));
+				const error =
+					e instanceof MeaoiuError ? e : errorFrom(this.current(), e instanceof Error ? e.message : String(e));
 				this.errors.push(error);
-				// 跳过到下一个安全点（一定要前进）
-				this.consumeToRecoveryPoint();
+				this.consumeToRecoveryPoint(); // 跳过到下一个安全点（一定要前进）
 				return this.createErrorNode(error);
 			}
 		}
@@ -630,10 +584,10 @@ export class Parser {
 					break;
 				default:
 					const prevToken = this.tokens[this.position - 1]!;
-					const errLine = prevToken.line;
-					const errCol = prevToken.col + prevToken.value.length;
+					const line = prevToken.line;
+					const col = prevToken.col + prevToken.value.length;
 					this.position--;
-					throw new Error(`[${errLine}:${errCol}] 语法错误喵: 这里要用「有好」或「有坏」闭合喵`);
+					throw new MeaoiuError({ message: '语法错误喵: 这里要用「有好」或「有坏」闭合喵', line, col });
 			}
 
 			l = {
@@ -670,10 +624,10 @@ export class Parser {
 					break;
 				default:
 					const prevToken = this.tokens[this.position - 1]!;
-					const errLine = prevToken.line;
-					const errCol = prevToken.col + prevToken.value.length;
+					const line = prevToken.line;
+					const col = prevToken.col + prevToken.value.length;
 					this.position--;
-					throw new Error(`[${errLine}:${errCol}] 语法错误喵: 这里要用「都好」或「都坏」闭合喵`);
+					throw new MeaoiuError({ message: '语法错误喵: 这里要用「都好」或「都坏」闭合喵', line, col });
 			}
 
 			l = {
@@ -697,11 +651,11 @@ export class Parser {
 		let modeMask = 0; // 0 算术模式 | 1 比较模式
 
 		while (this.current().type === TokenType.OPERATOR && this.peek().type === TokenType.COMMA) {
-			const { value: op, line, col } = this.current();
-			switch ((+OP_SETS.ARITH.has(op) << 2) | (+OP_SETS.COMP_E.has(op) << 1) | modeMask) {
+			const { value: op } = this.current();
+			switch ((+OP_ARITH.has(op) << 2) | (+OP_COMP_E.has(op) << 1) | modeMask) {
 				case 0: // 000 无算术|无比较|算术模式
 				case 1: // 001 无算术|无比较|比较模式
-					throw new Error(`[${line}:${col}] 语法错误喵: '${op}' 不能用在节之间喵!`);
+					throw errorFrom(this.current(), `语法错误喵: '${op}' 不能用在节之间喵!`);
 				case 2: // 010 无算术|有比较|算术模式
 					modeMask = 1; // 切为比较模式
 					break;
@@ -709,7 +663,7 @@ export class Parser {
 				case 4: // 100 有算术|无比较|算术模式
 					break;
 				case 5: // 101 有算术|无比较|比较模式
-					throw new Error(`[${line}:${col}] 语法错误喵: 比较之后就不能做算术了喵!`);
+					throw errorFrom(this.current(), `语法错误喵: 比较之后就不能做算术了喵!`);
 				// 以下状态理论不可达：
 				// 110 有算术|有比较|算术模式
 				// 111 有算术|有比较|比较模式
@@ -737,7 +691,7 @@ export class Parser {
 		const expressions = [this.parseAdditiveExpression()];
 		const operators: Token[] = [];
 
-		while (OP_SETS.COMP.has(this.current().value) && this.peek().type !== TokenType.COMMA) {
+		while (OP_COMP.has(this.current().value) && this.peek().type !== TokenType.COMMA) {
 			operators.push(this.advance());
 			expressions.push(this.parseAdditiveExpression());
 		}
@@ -909,14 +863,11 @@ export class Parser {
 					errMsg = '只说半句看不懂喵';
 				}
 				// 未知 token：在 strict 模式抛；在 tolerant 模式生成 ErrorNode 并至少前进一个 token
-				const err = new Error(`[${t.line}:${t.col}] 语法错误喵: ${errMsg}`);
-				if (this.mode === 'tolerant') {
-					const se = this.formatError(err);
-					this.errors.push(se);
-					// 已经 advance 了一次（t 是 advance 返回的），此处不用再次 advance
-					return this.createErrorNode(se);
-				}
-				throw err;
+				const err = errorFrom(t, `语法错误喵: ${errMsg}`);
+				if (this.mode !== 'tolerant') throw err;
+				this.errors.push(err);
+				// 已经 advance 了一次（t 是 advance 返回的），此处不用再次 advance
+				return this.createErrorNode(err);
 		}
 
 		if (leading.length) {

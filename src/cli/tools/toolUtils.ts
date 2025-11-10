@@ -3,6 +3,7 @@
 import * as path from 'path';
 import readline from 'readline';
 import stringWidth from 'string-width';
+import { MeaoiuError, parseError } from '../../core/error.js';
 
 export function parsePosition(pos?: string): { line: number; col: number } {
 	if (!pos) throw new Error('位置参数不能为空');
@@ -17,14 +18,10 @@ export function parsePosition(pos?: string): { line: number; col: number } {
 }
 
 export function formatError(error: unknown, sourceCode: string, filePath: string): string {
-	const message = error instanceof Error ? error.message : String(error);
+	const { message, line, col, endLine, endCol } =
+		error instanceof MeaoiuError ? error : parseError(error instanceof Error ? error.message : String(error));
 
-	const match = message.match(/\[(\d+):(\d+)\]/);
-	if (!match) return `坏了喵: ${message}`;
-
-	const [, lineStr, colStr] = match;
-	const line = parseInt(lineStr!, 10);
-	const col = parseInt(colStr!, 10);
+	if (line <= 0) return `\n💥 坏了喵！💥\n${message}\n`;
 
 	const lines = sourceCode.split('\n');
 	const errorLine = lines[line - 1];
@@ -32,7 +29,9 @@ export function formatError(error: unknown, sourceCode: string, filePath: string
 
 	const prefix = errorLine.substring(0, col - 1);
 	const prefixWidth = stringWidth(prefix);
-	const indicator = `${' '.repeat(prefixWidth)}^`;
+	const errorPart = errorLine.slice(col - 1, endLine === line ? endCol : errorLine.length);
+	const errorPartWidth = stringWidth(errorPart);
+	const indicator = `${' '.repeat(prefixWidth)}${'^'.repeat(errorPartWidth)}`;
 
 	const fileName = path.basename(filePath);
 	const formattedMessage = [

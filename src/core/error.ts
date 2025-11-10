@@ -1,55 +1,63 @@
 // src/core/error.ts
-// 未启用
+
 import type * as AST from './ast.js';
 import type { Token } from './tokenizer.js';
 
-export type MeaoiuError = {
-	message: string;
-	line: number;
-	col: number;
-	endLine: number;
-	endCol: number;
+type StartPosition = { line: number; col: number };
+type EndPosition = { endLine: number; endCol: number };
+type ErrorParams = { message: string } & StartPosition & (EndPosition | {});
+
+export class MeaoiuError {
+	public message: string;
+	public line: number;
+	public col: number;
+	public endLine: number;
+	public endCol: number;
+
+	constructor(params: ErrorParams) {
+		const { message, line, col } = params;
+		this.message = message;
+		this.line = line;
+		this.col = col;
+		if ('endLine' in params) {
+			this.endLine = params.endLine;
+			this.endCol = params.endCol;
+		} else {
+			this.endLine = line;
+			this.endCol = col;
+		}
+	}
+
+	toString() {
+		return `[${this.line}:${this.col}] ${this.message}`;
+	}
+}
+
+export function errorFrom(ele: AST.Node | Token, message: string): MeaoiuError {
+	return new MeaoiuError({
+		message,
+		...('endLine' in ele ? ele : { ...ele, endLine: ele.line, endCol: ele.col + ele.value.length - 1 }),
+	}); // 若来 ErrorNode，自然以 ErrorNode 的 message 覆盖；若是 Token，尾端位置为 Token 末尾
+}
+
+const parseIntOrNull = (input: string | undefined): number | null => {
+	if (input == null) return null; // undefined 或 null -> 空
+	const n = Number.parseInt(input, 10);
+	return Number.isNaN(n) ? null : n;
 };
 
-export function createError(message: string, ele: AST.Node | Token): MeaoiuError {
-	const error: MeaoiuError = {
+export function parseError(message: string): MeaoiuError {
+	const errorParams = {
 		message,
-		line: ele.line,
-		col: ele.col,
-		endLine: ele.line,
-		endCol: ele.col,
-	};
-	if ('endLine' in ele) {
-		error.endLine = ele.endLine;
-		error.endCol = ele.endCol;
-	}
-	return error;
-}
-
-export function throwError(message: string, ele: AST.Node | Token): never {
-	throw createError(message, ele);
-}
-
-export function toMeaoiuError(err: Error): MeaoiuError {
-	const error: MeaoiuError = {
-		message: err.message,
 		line: 0,
 		col: 0,
-		endLine: 0,
-		endCol: 0,
 	};
-	const match = err.message.match(/\[(\d+):(\d+)\]/);
+	const match = message.match(/\[(\d+):(\d+)\]/);
 	if (match) {
 		const [rawPos, rawLine, rawCol] = match;
-		error.message = err.message.replace(rawPos, '').trim(); // 移除匹配到的位置信息部分
-		error.line = rawLine ? parseInt(rawLine, 10) : error.line;
-		error.col = rawCol ? parseInt(rawCol, 10) : error.col;
-		error.endLine = error.line;
-		error.endCol = error.col;
+		errorParams.message = message.replace(rawPos, '').trim(); // 移除匹配到的位置信息部分
+		errorParams.line = parseIntOrNull(rawLine) ?? errorParams.line;
+		errorParams.col = parseIntOrNull(rawCol) ?? errorParams.col;
 	}
-	return error;
-}
-
-export function formatError(error: MeaoiuError): string {
-	return `[${error.line}:${error.col}] ${error.message}`;
+	return new MeaoiuError(errorParams);
 }

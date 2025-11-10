@@ -3,6 +3,7 @@
 import type * as AST from '../ast.js';
 import { AssignmentKind, LogicalOperator, NodeType } from '../ast.js';
 import { type BuiltInFunctions, isBuiltInFunctionName } from '../builtIns.js';
+import { MeaoiuError, errorFrom } from '../error.js';
 import { checkArithmeticOperation, checkComparisonOperation, getMeaoiuType, MeaoiuType, typeNames } from '../typedef.js';
 import { Environment } from './environment.js';
 import logger from './logger.js';
@@ -62,13 +63,13 @@ export async function evaluate(
 				return lastEvaluatedInProgram;
 			}
 			case NodeType.BlockStatement: {
-				const block = node;
+				const { isCollection, body } = node;
 				const blockEnv = newEnvType !== NewEnvType.normal ? env : new Environment(env);
 				let lastEvaluated = null;
 				let autoIndexCounter = 0; // 自动索引计数器
 
-				for (const stmt of block.body) {
-					if (block.isCollection) {
+				for (const stmt of body) {
+					if (isCollection) {
 						// --- 纸箱的特殊求值规则 ---
 						if (stmt.type === NodeType.VariableDeclaration) {
 							// 处理带 `蹭` 或隐式的 `a 就是 1`
@@ -98,7 +99,7 @@ export async function evaluate(
 					}
 				}
 
-				if (block.isCollection) return blockEnv; // 返回纸箱的环境
+				if (isCollection) return blockEnv; // 返回纸箱的环境
 				if (newEnvType !== NewEnvType.normal) return null; // 非普通块只靠信号返回
 
 				if (lastEvaluated?.isVariableReference) {
@@ -106,10 +107,8 @@ export async function evaluate(
 					const sourceScope: Environment = varRef.scope;
 
 					if (sourceScope === blockEnv) {
-						const lastStmtNode = block.body.at(-1) ?? node;
-						throw new Error(
-							`[${lastStmtNode.line}:${lastStmtNode.col}] 运行时错误喵: 不能让里面玩具「${varRef.name}」跑出去喵！`
-						);
+						const lastStmtNode = body.at(-1) ?? node;
+						throw errorFrom(lastStmtNode, `运行错误喵: 不能让里面玩具「${varRef.name}」跑出去喵！`);
 					}
 				}
 
@@ -122,10 +121,9 @@ export async function evaluate(
 				const collection = env.resolveValue(collectionRef);
 
 				if (!(collection instanceof Environment)) {
-					throw new Error(
-						`[${memberExpr.object.line}:${memberExpr.object.col}] 运行错误喵: 用 '@' 只能从${
-							typeNames[MeaoiuType.COLLECTION]
-						}里拿东西喵！`
+					throw errorFrom(
+						memberExpr.object,
+						`运行错误喵: 用 '@' 只能从${typeNames[MeaoiuType.COLLECTION]}里拿东西喵！`
 					);
 				}
 
@@ -133,22 +131,24 @@ export async function evaluate(
 				const propValue = env.resolveValue(property);
 
 				if (typeof propValue !== 'number' && typeof propValue !== 'string') {
-					throw new Error(
-						`[${memberExpr.property.line}:${memberExpr.property.col}] 运行错误喵: ${
-							typeNames[MeaoiuType.COLLECTION]
-						}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${typeNames[MeaoiuType.STRING]}喵！`
+					throw errorFrom(
+						memberExpr.property,
+						`运行错误喵: ${typeNames[MeaoiuType.COLLECTION]}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${
+							typeNames[MeaoiuType.STRING]
+						}喵！`
 					);
 				}
 
 				return collection.lookup(propValue);
 			}
 			case NodeType.SequenceExpression: {
-				const seqExpr = node;
-				let accVal = env.resolveValue(await evaluate(seqExpr.sections[0]!, env, builtIns, boundaryEnv));
+				const { sections, operators } = node;
+				let accVal = env.resolveValue(await evaluate(sections[0]!, env, builtIns, boundaryEnv));
 
-				for (let i = 0; i < seqExpr.operators.length; i++) {
-					const { value: op, line, col } = seqExpr.operators[i]!;
-					const nextVal = env.resolveValue(await evaluate(seqExpr.sections[i + 1]!, env, builtIns, boundaryEnv));
+				for (let i = 0; i < operators.length; i++) {
+					const opToken = operators[i]!,
+						op = opToken.value;
+					const nextVal = env.resolveValue(await evaluate(sections[i + 1]!, env, builtIns, boundaryEnv));
 
 					switch (op) {
 						case '==':
@@ -163,7 +163,7 @@ export async function evaluate(
 					const nextType = getMeaoiuType(nextVal);
 
 					const error = checkArithmeticOperation(op, accType, nextType);
-					if (error) throw new Error(`[${line}:${col}] 运行错误喵: ${error}`);
+					if (error) throw errorFrom(opToken, `运行错误喵: ${error}`);
 
 					switch (op) {
 						case '+':
@@ -179,23 +179,22 @@ export async function evaluate(
 							accVal /= nextVal;
 							break;
 						default:
-							throw new Error(`[${line}:${col}] 运行错误喵: 这是什么节喵: ${op}`);
+							throw errorFrom(opToken, `运行错误喵: 这是什么节喵: ${op}`);
 					}
 				}
 				return accVal;
 			}
 			case NodeType.ArithmeticExpression: {
-				const binExpr = node;
+				const { operator: op, left, right } = node;
 
-				const op = binExpr.operator;
-				const leftVal = env.resolveValue(await evaluate(binExpr.left, env, builtIns, boundaryEnv));
-				const rightVal = env.resolveValue(await evaluate(binExpr.right, env, builtIns, boundaryEnv));
+				const leftVal = env.resolveValue(await evaluate(left, env, builtIns, boundaryEnv));
+				const rightVal = env.resolveValue(await evaluate(right, env, builtIns, boundaryEnv));
 
 				const leftType = getMeaoiuType(leftVal);
 				const rightType = getMeaoiuType(rightVal);
 
 				const error = checkArithmeticOperation(op, leftType, rightType);
-				if (error) throw new Error(error);
+				if (error) throw errorFrom(node, `运行错误喵: ${error}`);
 
 				switch (op) {
 					case '+':
@@ -207,28 +206,27 @@ export async function evaluate(
 					case '/':
 						return leftVal / rightVal;
 				}
-				throw new Error(`是两块钱的运算符喵? ${binExpr.operator}`);
+				throw errorFrom(node, `运行错误喵: 是两块钱的运算符喵? ${op}`);
 			}
 			case NodeType.ComparisonExpression: {
-				const compExpr = node;
-				if (compExpr.expressions.length < 2) {
-					return env.resolveValue(await evaluate(compExpr.expressions[0]!, env, builtIns, boundaryEnv));
+				const { expressions, operators } = node;
+				if (expressions.length < 2) {
+					return env.resolveValue(await evaluate(expressions[0]!, env, builtIns, boundaryEnv));
 				}
 
 				let overallResult = true;
-				let currentLeftVal = env.resolveValue(await evaluate(compExpr.expressions[0]!, env, builtIns, boundaryEnv));
+				let currentLeftVal = env.resolveValue(await evaluate(expressions[0]!, env, builtIns, boundaryEnv));
 
-				for (let i = 0; i < compExpr.operators.length; i++) {
-					const { value: op, line, col } = compExpr.operators[i]!;
-					const currentRightVal = env.resolveValue(
-						await evaluate(compExpr.expressions[i + 1]!, env, builtIns, boundaryEnv)
-					);
+				for (let i = 0; i < operators.length; i++) {
+					const opToken = operators[i]!,
+						op = opToken.value;
+					const currentRightVal = env.resolveValue(await evaluate(expressions[i + 1]!, env, builtIns, boundaryEnv));
 
 					const leftType = getMeaoiuType(currentLeftVal);
 					const rightType = getMeaoiuType(currentRightVal);
 
 					const error = checkComparisonOperation(op, leftType, rightType);
-					if (error) throw new Error(`[${line}:${col}] 运行错误喵: ${error}`);
+					if (error) throw errorFrom(opToken, `运行错误喵: ${error}`);
 
 					// --- 执行单个比较 ---
 					let currentResult = false;
@@ -252,7 +250,7 @@ export async function evaluate(
 							currentResult = currentLeftVal <= currentRightVal;
 							break;
 						default:
-							throw new Error(`[${line}:${col}] 运行错误喵: 这个不会比喵: ${op}`);
+							throw errorFrom(opToken, `运行错误喵: 这个不会比喵: ${op}`);
 					}
 
 					if (!currentResult) {
@@ -266,24 +264,24 @@ export async function evaluate(
 				return overallResult;
 			}
 			case NodeType.LogicalExpression: {
-				const logExpr = node;
-				const leftVal = env.resolveValue(await evaluate(logExpr.left, env, builtIns, boundaryEnv));
-				switch (logExpr.operator) {
+				const { operator: op, left, right } = node;
+				const leftVal = env.resolveValue(await evaluate(left, env, builtIns, boundaryEnv));
+				switch (op) {
 					case LogicalOperator.AND:
-						return leftVal && env.resolveValue(await evaluate(logExpr.right, env, builtIns, boundaryEnv));
+						return leftVal && env.resolveValue(await evaluate(right, env, builtIns, boundaryEnv));
 					case LogicalOperator.OR:
-						return leftVal || env.resolveValue(await evaluate(logExpr.right, env, builtIns, boundaryEnv));
+						return leftVal || env.resolveValue(await evaluate(right, env, builtIns, boundaryEnv));
 					case LogicalOperator.NOR:
-						return !(leftVal || env.resolveValue(await evaluate(logExpr.right, env, builtIns, boundaryEnv)));
+						return !(leftVal || env.resolveValue(await evaluate(right, env, builtIns, boundaryEnv)));
 					case LogicalOperator.NAND:
-						return !(leftVal && env.resolveValue(await evaluate(logExpr.right, env, builtIns, boundaryEnv)));
+						return !(leftVal && env.resolveValue(await evaluate(right, env, builtIns, boundaryEnv)));
 				}
 			}
 			case NodeType.VariableDeclaration: {
-				const varDec = node;
-				env.declare(varDec.identifier.symbol); // 声明变量名
+				const { identifier, initialization } = node;
+				env.declare(identifier.symbol); // 声明变量名
 				// 若有初始化部分，则执行以赋值
-				if (varDec.initialization) return await evaluate(varDec.initialization, env, builtIns, boundaryEnv);
+				if (initialization) return await evaluate(initialization, env, builtIns, boundaryEnv);
 				return null;
 			}
 			case NodeType.AssignmentStatement: {
@@ -300,10 +298,9 @@ export async function evaluate(
 					const collectionRef = await evaluate(memberExpr.object, env, builtIns, boundaryEnv);
 					const collection = env.resolveValue(collectionRef);
 					if (!(collection instanceof Environment)) {
-						throw new Error(
-							`[${memberExpr.object.line}:${memberExpr.object.col}] 运行错误喵: 只能给${
-								typeNames[MeaoiuType.COLLECTION]
-							}的成员赋值喵！`
+						throw errorFrom(
+							memberExpr.object,
+							`运行错误喵: 只能给${typeNames[MeaoiuType.COLLECTION]}的成员赋值喵！`
 						);
 					}
 
@@ -321,10 +318,11 @@ export async function evaluate(
 							else key = collection.orderedVariableNames[propValue - 1]!;
 							break;
 						default:
-							throw new Error(
-								`[${memberExpr.property.line}:${memberExpr.property.col}] 运行错误喵: ${
-									typeNames[MeaoiuType.COLLECTION]
-								}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${typeNames[MeaoiuType.STRING]}喵！`
+							throw errorFrom(
+								memberExpr.property,
+								`运行错误喵: ${typeNames[MeaoiuType.COLLECTION]}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${
+									typeNames[MeaoiuType.STRING]
+								}喵！`
 							);
 					}
 
@@ -339,7 +337,7 @@ export async function evaluate(
 				// 目标是 a 这种普通变量
 				const target = await evaluate(assignStmt.assignee, env, builtIns, boundaryEnv);
 				if (!target?.isVariableReference) {
-					throw new Error(`[${node.line}:${node.col}] 运行错误喵: 赋值的左边必须是一个碗喵！`);
+					throw errorFrom(assignStmt.assignee, `运行错误喵: 赋值的左边必须是一个碗喵！`);
 				}
 				return target.scope.assign(target.name, value, assignStmt.kind);
 			}
@@ -382,8 +380,9 @@ export async function evaluate(
 					const sourceScope = varRef.scope;
 
 					if (sourceScope.isInsideOf(boundaryEnv[node.type])) {
-						throw new Error(
-							`[${node.line}:${node.col}] 运行错误喵: 不能把里面的临时玩具「${varName}」带走喵，它离开这里就消失了！`
+						throw errorFrom(
+							node.argument,
+							`运行错误喵: 不能把里面的临时玩具「${varName}」带走喵，它离开这里就消失了！`
 						);
 					}
 				}
@@ -391,8 +390,7 @@ export async function evaluate(
 				return ReturnOrAmbush[node.type].valueHandler(value);
 			}
 			case NodeType.FunctionDeclaration: {
-				const funcDec = node;
-				env.declareFunction(funcDec.name.symbol, funcDec);
+				env.declareFunction(node.name.symbol, node);
 				return null;
 			}
 			case NodeType.CallExpression: {
@@ -401,9 +399,7 @@ export async function evaluate(
 
 				const argsRef = await evaluate(callExpr.args, env, builtIns, boundaryEnv);
 				const argsCollection = env.resolveValue(argsRef);
-				if (!(argsCollection instanceof Environment)) {
-					throw new Error(`[${callExpr.args.line}:${callExpr.args.col}] 运行错误喵: 贡品要装好喵！`);
-				}
+				if (!(argsCollection instanceof Environment)) throw errorFrom(callExpr.args, `运行错误喵: 贡品要装好喵！`);
 
 				if (isBuiltInFunctionName(funcName)) {
 					const evalArgs = [];
@@ -417,10 +413,9 @@ export async function evaluate(
 
 				const func = env.lookupFunction(funcName);
 				if (!func) {
-					throw new Error(
-						`[${callExpr.callee.line}:${callExpr.callee.col}] 运行错误喵: 没有叫「${funcName}」的${
-							typeNames[MeaoiuType.FUNCTION]
-						}喵！`
+					throw errorFrom(
+						callExpr.callee,
+						`运行错误喵: 没有叫「${funcName}」的${typeNames[MeaoiuType.FUNCTION]}喵！`
 					);
 				}
 
@@ -433,13 +428,14 @@ export async function evaluate(
 							return stmt.expression.symbol;
 						}
 						if (stmt.type === NodeType.VariableDeclaration) return stmt.identifier.symbol;
-						throw new Error(`[${stmt.line}:${stmt.col}] 运行错误喵: 贡品不能是奇怪的样子 ${stmt.type} 喵！`);
+						throw errorFrom(stmt, `运行错误喵: 贡品不能是奇怪的样子 ${stmt.type} 喵！`);
 					})
 					.filter(Boolean);
 
 				if (argsCollection.orderedVariableNames.length < paramNames.length) {
-					throw new Error(
-						`[${callExpr.args.line}:${callExpr.args.col}] 运行错误喵: 只给 ${argsCollection.orderedVariableNames.length} 个贡品不够喵！需要 ${paramNames.length} 个。`
+					throw errorFrom(
+						callExpr.args,
+						`运行错误喵: 要 ${paramNames.length} 个贡品，只给 ${argsCollection.orderedVariableNames.length} 个不够喵！`
 					);
 				}
 
@@ -465,20 +461,20 @@ export async function evaluate(
 				return null;
 			}
 			case NodeType.UnaryExpression: {
-				const unaryExpr = node;
-				const argumentRef = await evaluate(unaryExpr.argument, env, builtIns, boundaryEnv);
+				const { operator: op, argument } = node;
+				const argumentRef = await evaluate(argument, env, builtIns, boundaryEnv);
 				const argumentValue = env.resolveValue(argumentRef);
 
-				if (unaryExpr.operator === AssignmentKind.COPY) {
+				if (op === AssignmentKind.COPY) {
 					// 高仿
 					if (argumentValue instanceof Environment) return argumentValue.createShallowCopy();
 					return argumentValue;
 				}
 
-				if (unaryExpr.operator === AssignmentKind.MOVE) {
+				if (op === AssignmentKind.MOVE) {
 					// 抢走
 					if (!argumentRef?.isVariableReference) {
-						throw new Error(`[${node.line}:${node.col}] 运行错误喵: 只能抢走一个变量，不能抢走一个表达式结果喵！`);
+						throw errorFrom(argument, `运行错误喵: 只能抢走一个变量，不能抢走一个表达式结果喵！`);
 					}
 					// 标记源头为已移动
 					argumentRef.scope.variables.get(argumentRef.name).moved = true;
@@ -489,16 +485,15 @@ export async function evaluate(
 			case NodeType.ExpressionStatement:
 				return await evaluate(node.expression, env, builtIns, boundaryEnv);
 			case NodeType.ErrorNode:
-				throw new Error(`[${node.line}:${node.col}] 运行错误喵: ${node.message}`);
+				throw new MeaoiuError(node);
 			default: // 此处已推断为不可达
 				const n: never = node;
-				throw new Error(`运行错误喵: 不支持的节点类型喵！${n}`);
+				throw errorFrom(n, `运行错误喵: 不支持的节点类型喵！${n}`);
 		}
 	} catch (err) {
+		if (err instanceof MeaoiuError) throw err;
 		const errorMessage = err instanceof Error ? err.message : String(err);
-		if (errorMessage.startsWith('[')) throw err; // 如果错误已经有位置信息，直接抛出
-		// 否则，附加上当前 AST 节点的位置信息再抛出
-		throw new Error(`[${node.line}:${node.col}] 运行错误喵: ${errorMessage}`);
+		throw errorFrom(node, `运行错误喵: ${errorMessage}`); // 附加上当前 AST 节点再抛出
 	}
 }
 
@@ -543,9 +538,7 @@ async function _evaluateCollectionElement(
 	}
 
 	if (blockEnv.variables.has(name)) {
-		throw new Error(
-			`[${stmt.line}:${stmt.col}] 运行错误喵: ${typeNames[MeaoiuType.COLLECTION]}里已经有一个叫做「${name}」的玩具了喵！`
-		);
+		throw errorFrom(stmt, `运行错误喵: ${typeNames[MeaoiuType.COLLECTION]}里已经有一个叫做「${name}」的玩具了喵！`);
 	}
 
 	// 将这个元素“声明”到纸箱的环境中

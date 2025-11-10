@@ -84,11 +84,9 @@ export function isKeyword(symbol: string): symbol is Keyword {
 
 export const sortedKeywords = Object.keys(KEYWORDS).sort((a, b) => b.length - a.length) as Keyword[];
 
-export const OP_SETS = {
-	ARITH: new Set(['+', '-', '*', '/']),
-	COMP: new Set(['==', '!=', '>', '<', '>=', '<=']),
-	COMP_E: new Set(['==', '!=']),
-};
+export const OP_ARITH = new Set(['+', '-', '*', '/']);
+export const OP_COMP = new Set(['==', '!=', '>', '<', '>=', '<=']);
+export const OP_COMP_E = new Set(['==', '!=']);
 const TWO_CHAR_SYMBOLS = new Set(['==', '!=', '>=', '<=', '[=', '=]', '[#', '#]']);
 
 export type Token = {

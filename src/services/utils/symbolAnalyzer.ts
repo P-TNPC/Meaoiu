@@ -3,17 +3,12 @@
 import type * as AST from '../../core/ast.js';
 import { AssignmentKind, NodeType } from '../../core/ast.js';
 import type { builtInFunctionNames } from '../../core/builtIns.js';
-import { checkArithmeticOperation, checkComparisonOperation, MeaoiuType } from '../../core/typedef.js';
+import { MeaoiuError, errorFrom } from '../../core/error.js';
+import { MeaoiuType, checkArithmeticOperation, checkComparisonOperation } from '../../core/typedef.js';
 import type { Scope, SymbolInfo } from './symbolTable.js';
 
-export interface SemanticError {
-	message: string;
-	line: number;
-	col: number;
-}
-
 class SymbolAnalyzer {
-	public errors: SemanticError[] = [];
+	public errors: MeaoiuError[] = [];
 	public symbolMap: Map<AST.Node, SymbolInfo> = new Map();
 	public nodeScopeMap: Map<AST.Node, Scope> = new Map();
 	private currentScope: Scope;
@@ -75,7 +70,11 @@ class SymbolAnalyzer {
 
 					if (knownType === MeaoiuType.UNKNOWN) knownType = this.inferExpressionType(node.sections[i + 1]!);
 
-					if (knownType === MeaoiuType.NUMBER || knownType === MeaoiuType.STRING || knownType === MeaoiuType.COLLECTION) {
+					if (
+						knownType === MeaoiuType.NUMBER ||
+						knownType === MeaoiuType.STRING ||
+						knownType === MeaoiuType.COLLECTION
+					) {
 						accType = knownType;
 					}
 				}
@@ -248,7 +247,7 @@ class SymbolAnalyzer {
 	}
 
 	private visitArithmeticExpression(node: AST.ArithmeticExpression) {
-		const { operator: op, left, right, line, col } = node;
+		const { operator: op, left, right } = node;
 		this.visit(left);
 		this.visit(right);
 
@@ -272,7 +271,7 @@ class SymbolAnalyzer {
 		}
 
 		const error = checkArithmeticOperation(op, leftType, rightType);
-		if (error) this.errors.push({ message: error, line, col });
+		if (error) this.errors.push(errorFrom(node, error));
 	}
 
 	private visitComparisonExpression(node: AST.ComparisonExpression) {
@@ -285,7 +284,6 @@ class SymbolAnalyzer {
 		this.visit(node.expressions[0]); // 访问第一个
 
 		for (let i = 0; i < node.operators.length; i++) {
-			const { value: op, line, col } = node.operators[i]!;
 			const currentRightExpr = node.expressions[i + 1]!;
 			let currentRightType = this.inferExpressionType(currentRightExpr); // 必须是 let
 			this.visit(currentRightExpr); // 访问右边
@@ -304,8 +302,9 @@ class SymbolAnalyzer {
 					break;
 			}
 
-			const error = checkComparisonOperation(op, currentLeftType, currentRightType);
-			if (error) this.errors.push({ message: error, line, col });
+			const opToken = node.operators[i]!;
+			const error = checkComparisonOperation(opToken.value, currentLeftType, currentRightType);
+			if (error) this.errors.push(errorFrom(opToken, error));
 
 			currentLeftType = currentRightType;
 		}
@@ -316,7 +315,8 @@ class SymbolAnalyzer {
 		this.visit(node.sections[0]); // 访问第一节
 
 		for (let i = 0; i < node.operators.length; i++) {
-			const { value: op, line, col } = node.operators[i]!;
+			const opToken = node.operators[i]!,
+				op = opToken.value;
 			if (op === '==' || op === '!=') {
 				this.visitComparisonSequence(node, i + 1); // 让专用检查函数接力
 				return; // 本函数已结束使命
@@ -342,7 +342,7 @@ class SymbolAnalyzer {
 
 			const error = checkArithmeticOperation(op, accType, nextType);
 			if (error) {
-				this.errors.push({ message: error, line, col });
+				this.errors.push(errorFrom(opToken, error));
 				break; // 跳出坏链
 			}
 
@@ -356,15 +356,12 @@ class SymbolAnalyzer {
 
 		// 遍历链上剩下的所有操作符
 		for (let i = startIndex; i < node.operators.length; i++) {
-			const { value: op, line, col } = node.operators[i]!;
+			const opToken = node.operators[i]!,
+				op = opToken.value;
 
 			// 检查是否混入了非比较运算符
 			if (op !== '==' && op !== '!=') {
-				this.errors.push({
-					message: `比较节不能混入 '${op}' 算术符喵!`,
-					line: line,
-					col: col,
-				});
+				this.errors.push(errorFrom(opToken, `比较节不能混入 '${op}' 算术符喵!`));
 				break; // 发现错误，中止检查
 			}
 
@@ -381,18 +378,12 @@ class SymbolAnalyzer {
 	private visitIdentifier(node: AST.Identifier) {
 		const symbol = this.lookup(node.symbol); // 默认 resolveChain = true
 		if (symbol) {
-			if (symbol.isMoved) {
-				this.errors.push({
-					message: `使用了已经被移走的变量 '${node.symbol}'，它的碗是空的喵！`,
-					line: node.line,
-					col: node.col,
-				});
-			}
+			if (symbol.isMoved) this.errors.push(errorFrom(node, `使用了已被移走的变量 '${node.symbol}'，它的碗是空的喵！`));
 			symbol.references.push(node);
 			this.symbolMap.set(node, symbol);
 			return;
 		}
-		this.errors.push({ message: `找不到名字为 '${node.symbol}' 的玩具喵！`, line: node.line, col: node.col });
+		this.errors.push(errorFrom(node, `找不到名字为 '${node.symbol}' 的玩具喵！`));
 	}
 
 	private markAsMoved(name: string) {
@@ -425,11 +416,7 @@ class SymbolAnalyzer {
 		valueRef?: SymbolInfo
 	) {
 		if (this.currentScope.symbols.has(name)) {
-			this.errors.push({
-				message: `名字 '${name}' 已经被定义过了喵！`,
-				line: declarationNode.line,
-				col: declarationNode.col,
-			});
+			this.errors.push(errorFrom(declarationNode, `名字 '${name}' 已经被定义过了喵！`));
 			return;
 		}
 
@@ -479,7 +466,7 @@ export function analyzeSymbols(
 	builtInNames: typeof builtInFunctionNames
 ): {
 	rootScope: Scope;
-	errors: SemanticError[];
+	errors: MeaoiuError[];
 	symbolMap: Map<AST.Node, SymbolInfo>;
 	nodeScopeMap: Map<AST.Node, Scope>;
 } {
