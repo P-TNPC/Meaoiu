@@ -4,7 +4,7 @@ import type * as AST from '../ast.js';
 import { AssignmentKind } from '../ast.js';
 import logger from '../run/logger.js';
 
-type VariableValue = { isReference: true; scope: Environment; name: string } | null; // 允许在声明时临时为 null
+type VariableValue = { isReference: true; scope: Environment; name: string } | null /* 实际上还有 MeaoiuValue */;
 interface Variable {
 	value: VariableValue;
 	moved: boolean;

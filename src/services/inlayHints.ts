@@ -6,7 +6,7 @@ import { tokenize } from '../core/tokenizer.js';
 import { Parser } from '../core/parser.js';
 import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
-import type { SymbolInfo } from './utils/symbolTable.js';
+import { SymbolKind, SymbolTag, type SymbolInfo } from './utils/symbolTable.js';
 import { buildParentMap, isNodeArray } from './utils/astUtils.js';
 import { MeaoiuType, typeNames } from '../core/typedef.js';
 
@@ -81,19 +81,20 @@ export function getInlayHints(sourceCode: string): InlayHint[] {
 	symbolMap.forEach((symbolInfo, node) => {
 		if (
 			node.type !== NodeType.Identifier ||
-			symbolInfo.kind === 'function' ||
+			symbolInfo.kind === SymbolKind.FUNCTION ||
 			(symbolInfo.type === MeaoiuType.UNKNOWN && !symbolInfo.valueRef)
 		) {
 			return;
 		}
 		const isReference = symbolInfo.references.includes(node);
-		const { name, isMoved } = findUltimateSource(symbolInfo);
+		const { name: ultimateName, tag: ultimateTag } = findUltimateSource(symbolInfo);
+		const { name, type } = symbolInfo;
 
-		const moveMark = !isMoved ? '' : symbolInfo.type === MeaoiuType.UNKNOWN ? '!' : '_';
-		const sourceName = name === symbolInfo.name ? '' : `${isMoved ? '' : '*'}${name}`;
-		const symbolType = isReference || symbolInfo.type === MeaoiuType.UNKNOWN ? '' : `:${typeNames[symbolInfo.type]}`;
+		const moveMark = ultimateTag === SymbolTag.NORMAL ? '' : ultimateTag === SymbolTag.DECAYED ? '!' : '_';
+		const sourceName = ultimateName === name ? '' : `${ultimateTag !== SymbolTag.NORMAL ? '' : '*'}${ultimateName}`;
+		const symbolType = isReference || type === MeaoiuType.UNKNOWN ? '' : `:${typeNames[type]}`;
 		hints.push({
-			position: { line: node.line - 1, character: node.endCol - 1 },
+			position: { line: node.line, character: node.endCol },
 			label: `${moveMark}${sourceName}${symbolType}`,
 			kind: InlayHintKind.Type,
 			// paddingLeft: true,
@@ -110,7 +111,7 @@ export function getInlayHints(sourceCode: string): InlayHint[] {
 		if (node.type === NodeType.CallExpression && node.args.type === NodeType.BlockStatement && node.args.isCollection) {
 			const calleeInfo = symbolMap.get(node.callee);
 
-			if (calleeInfo?.kind === 'function' && !calleeInfo.isBuiltIn && calleeInfo.declarations[0]) {
+			if (calleeInfo?.kind === SymbolKind.FUNCTION && !calleeInfo.isBuiltIn && calleeInfo.declarations[0]) {
 				// 从父节点映射找到 FunctionDeclaration
 				const funcDecNode = parentMap.get(calleeInfo.declarations[0]);
 
@@ -121,7 +122,7 @@ export function getInlayHints(sourceCode: string): InlayHint[] {
 						if (index >= paramNames.length) return;
 						const paramName = paramNames[index];
 						hints.push({
-							position: { line: argStmt.line - 1, character: argStmt.col - 1 },
+							position: { line: argStmt.line, character: argStmt.col },
 							label: `${paramName}:`,
 							kind: InlayHintKind.Parameter,
 							paddingRight: true,

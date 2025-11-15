@@ -101,7 +101,7 @@ export type TokenizerOptions = {
 	convertFullWidth?: boolean;
 };
 
-export function tokenize(sourceCode: string, options: TokenizerOptions): Token[] {
+export function tokenize(sourceCode: string, options: TokenizerOptions, oneBased = true): Token[] {
 	options.convertFullWidth ??= true;
 	if (options?.convertFullWidth) sourceCode = preprocess(sourceCode);
 
@@ -110,8 +110,8 @@ export function tokenize(sourceCode: string, options: TokenizerOptions): Token[]
 	let expectingFuncNameAfterParamEnd = false;
 
 	const tokens: Token[] = [];
-	let line = 1;
-	let col = 1;
+	let line = +oneBased;
+	let col = +oneBased;
 	let cursor = 0;
 
 	const advance = (steps = 1) => {

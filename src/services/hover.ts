@@ -6,6 +6,7 @@ import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
 import { findIdentifierAt } from './utils/astUtils.js';
 import { typeNames } from '../core/typedef.js';
+import { SymbolKind, SymbolTag } from './utils/symbolTable.js';
 
 type HoverInfo = {
 	text: string;
@@ -14,6 +15,12 @@ type HoverInfo = {
 	endLine: number;
 	endCol: number;
 };
+
+const kindMap = {
+	[SymbolKind.FUNCTION]: 'function',
+	[SymbolKind.VARIABLE]: 'variable',
+	[SymbolKind.PARAMETER]: 'parameter',
+} as const satisfies Record<SymbolKind, string>;
 
 export function getHoverInfo(sourceCode: string, position: { line: number; col: number }): HoverInfo | undefined {
 	const parser = new Parser(tokenize(sourceCode, { ignoreComments: true }), 'tolerant');
@@ -28,8 +35,9 @@ export function getHoverInfo(sourceCode: string, position: { line: number; col: 
 	if (!symbolInfo) return undefined;
 
 	const declaration = symbolInfo.declarations[0];
-	let hoverText = `**(${symbolInfo.kind}) ${symbolInfo.name} : ${typeNames[symbolInfo.type]}**`;
-	if(symbolInfo.isMoved) hoverText += `\n\n(源被标记为已移动)`;
+	let hoverText = `**(${kindMap[symbolInfo.kind] ?? 'unknown'}) ${symbolInfo.name} : ${typeNames[symbolInfo.type]}**`;
+	if (symbolInfo.tag === SymbolTag.MOVED) hoverText += `\n\n(被标记为已移动)`;
+	else if (symbolInfo.tag === SymbolTag.DECAYED) hoverText += `\n\n(源已被移走，不可用)`;
 	if (declaration) hoverText += `\n\n在 L${declaration.line}:${declaration.col} 处声明`;
 	else hoverText += `\n\n(这是一个内置计谋)`;
 

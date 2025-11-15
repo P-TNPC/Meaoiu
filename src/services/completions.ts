@@ -1,11 +1,11 @@
 // src/services/completions.ts
 
-import { tokenize, sortedKeywords } from '../core/tokenizer.js';
-import { Parser } from '../core/parser.js';
-import { builtInFunctionNames } from '../core/builtIns.js';
 import type * as AST from '../core/ast.js';
+import { builtInFunctionNames } from '../core/builtIns.js';
+import { Parser } from '../core/parser.js';
+import { sortedKeywords, tokenize } from '../core/tokenizer.js';
 import { analyzeSymbols } from './utils/symbolAnalyzer.js';
-import type { Scope, SymbolInfo } from './utils/symbolTable.js';
+import { SymbolKind, type Scope } from './utils/symbolTable.js';
 
 // 找到指定位置所在的最小作用域
 function findScopeAt(position: { line: number; col: number }, nodeScopeMap: Map<AST.Node, Scope>): Scope | undefined {
@@ -29,8 +29,19 @@ function findScopeAt(position: { line: number; col: number }, nodeScopeMap: Map<
 	return bestFitNode ? nodeScopeMap.get(bestFitNode) : undefined;
 }
 
-export type SymbolKind = SymbolInfo['kind'] | 'keyword';
-export type Suggestion = { label: string; kind: SymbolKind };
+export const enum SuggestionKind {
+	FUNCTION = 3,
+	VARIABLE = 6,
+	KEYWORD = 14,
+	REFERENCE = 18,
+}
+type Suggestion = { label: string; kind: SuggestionKind };
+
+const suggestionKinds = {
+	[SymbolKind.FUNCTION]: SuggestionKind.FUNCTION,
+	[SymbolKind.VARIABLE]: SuggestionKind.VARIABLE,
+	[SymbolKind.PARAMETER]: SuggestionKind.REFERENCE,
+} as const satisfies Record<SymbolKind, SuggestionKind>;
 // 获取一个作用域内所有可见的符号
 function getVisibleSymbols(scope: Scope): Suggestion[] {
 	const keys = new Set<string>();
@@ -41,7 +52,7 @@ function getVisibleSymbols(scope: Scope): Suggestion[] {
 			const key = `${symbol.name}\n:${symbol.kind}`;
 			if (!keys.has(key)) {
 				keys.add(key);
-				symbols.push({ label: symbol.name, kind: symbol.kind });
+				symbols.push({ label: symbol.name, kind: suggestionKinds[symbol.kind] });
 			}
 		});
 		current = current.parent;
@@ -49,7 +60,6 @@ function getVisibleSymbols(scope: Scope): Suggestion[] {
 	return symbols;
 }
 
-// 主服务函数
 export function getCompletions(sourceCode: string, position: { line: number; col: number }): Suggestion[] {
 	const tokens = tokenize(sourceCode, { ignoreComments: true });
 	const parser = new Parser(tokens, 'tolerant');
@@ -59,7 +69,7 @@ export function getCompletions(sourceCode: string, position: { line: number; col
 	const currentScope = findScopeAt(position, nodeScopeMap) ?? rootScope;
 
 	const symbolSuggestions = getVisibleSymbols(currentScope);
-	const keywordSuggestions = sortedKeywords.map<Suggestion>(k => ({ label: k, kind: 'keyword' }));
+	const keywordSuggestions = sortedKeywords.map<Suggestion>(k => ({ label: k, kind: SuggestionKind.KEYWORD }));
 
 	return [...symbolSuggestions, ...keywordSuggestions.reverse()];
 }

@@ -5,7 +5,7 @@ import { AssignmentKind, NodeType } from '../../core/ast.js';
 import type { builtInFunctionNames } from '../../core/builtIns.js';
 import { MeaoiuError, errorFrom } from '../../core/error.js';
 import { MeaoiuType, checkArithmeticOperation, checkComparisonOperation } from '../../core/typedef.js';
-import type { Scope, SymbolInfo } from './symbolTable.js';
+import { SymbolKind, SymbolTag, type Scope, type SymbolInfo } from './symbolTable.js';
 
 class SymbolAnalyzer {
 	public errors: MeaoiuError[] = [];
@@ -24,14 +24,18 @@ class SymbolAnalyzer {
 			case NodeType.StringLiteral:
 				return MeaoiuType.STRING;
 			case NodeType.BooleanLiteral:
+			case NodeType.ComparisonExpression:
+			case NodeType.LogicalExpression:
 				return MeaoiuType.BOOLEAN;
 			case NodeType.NullLiteral:
 				return MeaoiuType.NULL;
 			case NodeType.Identifier:
 				return this.lookup(node.symbol)?.type ?? MeaoiuType.UNKNOWN;
+			case NodeType.BlockStatement:
+				return node.isCollection ? MeaoiuType.COLLECTION : MeaoiuType.UNKNOWN;
 			case NodeType.CallExpression: {
 				const func = this.lookup(node.callee.symbol);
-				if (func?.kind === 'function') return MeaoiuType.UNKNOWN; // 函数调用时无法静态知道返回类型
+				if (func?.kind === SymbolKind.FUNCTION) return MeaoiuType.UNKNOWN; // 函数调用时无法静态知道返回类型
 				return MeaoiuType.UNKNOWN;
 			}
 			case NodeType.ArithmeticExpression: {
@@ -45,12 +49,8 @@ class SymbolAnalyzer {
 					? knownType
 					: MeaoiuType.UNKNOWN;
 			}
-			case NodeType.ComparisonExpression:
-				return MeaoiuType.BOOLEAN;
-			case NodeType.LogicalExpression:
-				return MeaoiuType.BOOLEAN;
 			case NodeType.SequenceExpression: {
-				let accType: MeaoiuType = MeaoiuType.UNKNOWN;
+				let accType = MeaoiuType.UNKNOWN;
 				let knownType = this.inferExpressionType(node.sections[0]!);
 
 				scan: for (let i = 0; i < node.operators.length; i++) {
@@ -80,14 +80,10 @@ class SymbolAnalyzer {
 				}
 				return accType;
 			}
-			case NodeType.BlockStatement:
-				return node.isCollection ? MeaoiuType.COLLECTION : MeaoiuType.UNKNOWN;
-			case NodeType.MemberAccessExpression:
-				// @ 访问符，目前无法静态知道它会返回什么
-				return MeaoiuType.UNKNOWN;
 			case NodeType.UnaryExpression:
 				// 高仿/抢走，类型与它操作的参数一致
 				return this.inferExpressionType(node.argument);
+			case NodeType.MemberAccessExpression: // @ 访问符，目前无法静态知道它会返回什么
 			default:
 				return MeaoiuType.UNKNOWN;
 		}
@@ -167,7 +163,7 @@ class SymbolAnalyzer {
 	}
 
 	private visitFunctionDeclaration(node: AST.FunctionDeclaration) {
-		this.declare(node.name.symbol, 'function', MeaoiuType.FUNCTION, node.name);
+		this.declare(node.name.symbol, SymbolKind.FUNCTION, SymbolTag.NORMAL, MeaoiuType.FUNCTION, node.name);
 		this.enterScope();
 
 		for (const paramStmt of node.params.body) {
@@ -181,13 +177,13 @@ class SymbolAnalyzer {
 				if (expr.type === NodeType.Identifier) {
 					// 情况 2: [= a =]
 					// 手动将 'a' 声明为 'parameter'
-					this.declare(expr.symbol, 'parameter', MeaoiuType.UNKNOWN, expr);
+					this.declare(expr.symbol, SymbolKind.PARAMETER, SymbolTag.NORMAL, MeaoiuType.UNKNOWN, expr);
 					this.visitIdentifier(expr); // 访问它，以便高亮和引用查找
 				} else if (expr.type === NodeType.UnaryExpression && expr.argument.type === NodeType.Identifier) {
 					// 情况 3: [= 高仿 a =] 或 [= 抢走 a =]
 					const idNode = expr.argument;
 					// 手动将 'a' 声明为 'parameter'
-					this.declare(idNode.symbol, 'parameter', MeaoiuType.UNKNOWN, idNode);
+					this.declare(idNode.symbol, SymbolKind.PARAMETER, SymbolTag.NORMAL, MeaoiuType.UNKNOWN, idNode);
 					this.visit(expr); // 访问整个 '高仿 a' 表达式
 				} else {
 					// 情况 4: [= 1+2 =] 或 [= '字面量' =] 或 [= a@1 =]
@@ -202,48 +198,68 @@ class SymbolAnalyzer {
 	}
 
 	private visitVariableDeclaration(node: AST.VariableDeclaration) {
+		const { identifier, initialization: init } = node;
 		let inferredType = MeaoiuType.NULL;
 		let valueRef: SymbolInfo | undefined; // 存储引用的符号
+		let tag = SymbolTag.NORMAL;
 
-		if (node.initialization) {
-			const init = node.initialization;
-			inferredType = this.inferExpressionType(init.value);
+		if (init) {
 			this.visit(init.value);
+			inferredType = this.inferExpressionType(init.value);
 
 			if (init.value.type === NodeType.Identifier) {
-				// 只有 '就是' (Reference) 才创建静态引用链
-				// '才是' (Move) 和 '就像' (Copy) 不创建引用链
-				if (init.kind === AssignmentKind.REFERENCE) valueRef = this.lookup(init.value.symbol, false);
+				const valueSymbol = this.symbolMap.get(init.value);
+				if (valueSymbol?.tag === SymbolTag.DECAYED) tag = valueSymbol.tag; // 衰变传染
+
+				if (init.kind === AssignmentKind.REFERENCE) valueRef = valueSymbol; // 只有 '就是' (Reference) 才创建静态引用链
 				else if (init.kind === AssignmentKind.MOVE) this.markAsMoved(init.value.symbol);
-			}
-		}
-		this.declare(node.identifier.symbol, 'variable', inferredType, node.identifier, valueRef);
-	}
 
-	private visitAssignmentStatement(node: AST.AssignmentStatement) {
-		this.visit(node.value);
-		const valueType = this.inferExpressionType(node.value);
-
-		this.visit(node.assignee);
-
-		if (node.assignee.type === NodeType.Identifier) {
-			const varName = node.assignee.symbol;
-			const symbol = this.lookup(varName, false); // 查找原始符号（不追踪链）
-
-			if (symbol) {
-				symbol.type = valueType;
-
-				// 只有 '就是' (Reference) 才更新静态引用链
-				if (node.kind === AssignmentKind.REFERENCE && node.value.type === NodeType.Identifier) {
-					symbol.valueRef = this.lookup(node.value.symbol, false);
-				} else {
-					// '才是' (Move) 和 '就像' (Copy) 会打断旧的引用链
-					symbol.valueRef = undefined;
+				if (tag !== SymbolTag.NORMAL) {
+					this.errors.push(errorFrom(identifier, `这个 '${identifier.symbol}' 没有灵魂喵！`));
 				}
 			}
 		}
+		this.declare(identifier.symbol, SymbolKind.VARIABLE, tag, inferredType, identifier, valueRef);
+	}
 
-		if (node.kind === AssignmentKind.MOVE && node.value.type === NodeType.Identifier) this.markAsMoved(node.value.symbol);
+	private visitAssignmentStatement(node: AST.AssignmentStatement) {
+		const { value, assignee, kind } = node;
+		this.visit(value);
+		const valueType = this.inferExpressionType(value);
+
+		if (assignee.type === NodeType.Identifier) {
+			this.visitIdentifier(assignee, false);
+			const originalSymbol = this.symbolMap.get(assignee); // 取得原始符号
+
+			if (originalSymbol) {
+				const symbol = { ...originalSymbol }; // 复制为新符号
+				symbol.type = valueType;
+				const valueSymbol = this.symbolMap.get(value);
+				if (valueSymbol?.tag === SymbolTag.DECAYED) symbol.tag = valueSymbol.tag; // 衰变传染
+
+				if (
+					kind === AssignmentKind.REFERENCE &&
+					value.type === NodeType.Identifier &&
+					symbol.tag !== SymbolTag.DECAYED
+				) {
+					// '就是' (Reference) 为未衰变符号更新静态引用链
+					symbol.valueRef = valueSymbol;
+				} else {
+					// '才是' (Move) 和 '就像' (Copy) 会打断旧的引用链，符号衰变也会使引用失效
+					symbol.valueRef = undefined;
+				}
+
+				// 更新符号表
+				this.currentScope.symbols.set(assignee.symbol, symbol);
+				this.symbolMap.set(assignee, symbol);
+
+				if (symbol.tag !== SymbolTag.NORMAL) {
+					this.errors.push(errorFrom(assignee, `被移过的 '${assignee.symbol}' 失效了喵！`));
+				}
+			}
+		} else this.visit(assignee);
+
+		if (kind === AssignmentKind.MOVE && value.type === NodeType.Identifier) this.markAsMoved(value.symbol);
 	}
 
 	private visitArithmeticExpression(node: AST.ArithmeticExpression) {
@@ -375,27 +391,28 @@ class SymbolAnalyzer {
 		this.visit(node.right);
 	}
 
-	private visitIdentifier(node: AST.Identifier) {
+	private visitIdentifier(node: AST.Identifier, checkTag: boolean = true) {
 		const symbol = this.lookup(node.symbol); // 默认 resolveChain = true
-		if (symbol) {
-			if (symbol.isMoved) this.errors.push(errorFrom(node, `使用了已被移走的变量 '${node.symbol}'，它的碗是空的喵！`));
-			symbol.references.push(node);
-			this.symbolMap.set(node, symbol);
+		if (!symbol) {
+			this.errors.push(errorFrom(node, `找不到名字为 '${node.symbol}' 的玩具喵！`));
 			return;
 		}
-		this.errors.push(errorFrom(node, `找不到名字为 '${node.symbol}' 的玩具喵！`));
+		if (checkTag && symbol.tag !== SymbolTag.NORMAL) {
+			this.errors.push(errorFrom(node, `藏在 '${node.symbol}' 里的东西被移走了喵！`));
+		}
+		symbol.references.push(node);
+		this.symbolMap.set(node, symbol);
 	}
 
 	private markAsMoved(name: string) {
 		// 查找原始符号
 		const symbolToMove = this.lookup(name, false);
+		if (!symbolToMove) return;
 
-		if (symbolToMove) {
-			// 追踪引用链到末端，并标记“已移动”
-			let finalSymbol = symbolToMove;
-			while (finalSymbol.valueRef) finalSymbol = finalSymbol.valueRef;
-			finalSymbol.isMoved = true;
-		}
+		// 追踪引用链到末端
+		let finalSymbol = symbolToMove;
+		while (finalSymbol.valueRef) finalSymbol = finalSymbol.valueRef;
+		finalSymbol.tag = SymbolTag.MOVED;
 	}
 
 	private enterScope() {
@@ -410,7 +427,8 @@ class SymbolAnalyzer {
 
 	private declare(
 		name: string,
-		kind: SymbolInfo['kind'],
+		kind: SymbolKind,
+		tag: SymbolTag,
 		type: MeaoiuType,
 		declarationNode: AST.Identifier,
 		valueRef?: SymbolInfo
@@ -420,7 +438,7 @@ class SymbolAnalyzer {
 			return;
 		}
 
-		const symbolInfo: SymbolInfo = { name, kind, type, declarations: [declarationNode], references: [], valueRef };
+		const symbolInfo: SymbolInfo = { name, kind, tag, type, declarations: [declarationNode], references: [], valueRef };
 
 		this.currentScope.symbols.set(name, symbolInfo);
 		this.symbolMap.set(declarationNode, symbolInfo);
@@ -445,13 +463,20 @@ class SymbolAnalyzer {
 		// 3. 追踪引用链，检查整条链上的“已移动”状态
 		let current: SymbolInfo | undefined = foundSymbol;
 		while (current) {
-			if (current.isMoved) {
+			if (current.tag !== SymbolTag.NORMAL) {
 				// 创建一个已衰变的符号对象
 				foundSymbol = {
 					...foundSymbol,
-					isMoved: true,
+					tag: SymbolTag.DECAYED,
 					type: MeaoiuType.UNKNOWN,
 				};
+				// 虚假的引用，仅用于提示
+				foundSymbol.valueRef = {
+					...foundSymbol,
+					name: current.name, // 保持原始名称
+					valueRef: undefined,
+				};
+				this.currentScope.symbols.set(name, foundSymbol);
 				break;
 			}
 			current = current.valueRef;
@@ -474,7 +499,8 @@ export function analyzeSymbols(
 	for (const name of builtInNames) {
 		rootScope.symbols.set(name, {
 			name,
-			kind: 'function',
+			kind: SymbolKind.FUNCTION,
+			tag: SymbolTag.NORMAL,
 			type: MeaoiuType.FUNCTION,
 			declarations: [],
 			references: [],

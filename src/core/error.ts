@@ -19,13 +19,8 @@ export class MeaoiuError {
 		this.message = message;
 		this.line = line;
 		this.col = col;
-		if ('endLine' in params) {
-			this.endLine = params.endLine;
-			this.endCol = params.endCol;
-		} else {
-			this.endLine = line;
-			this.endCol = col;
-		}
+		this.endLine = 'endLine' in params ? params.endLine : line;
+		this.endCol = 'endCol' in params ? params.endCol : col;
 	}
 
 	toString() {
@@ -36,7 +31,7 @@ export class MeaoiuError {
 export function errorFrom(ele: AST.Node | Token, message: string): MeaoiuError {
 	return new MeaoiuError({
 		message,
-		...('endLine' in ele ? ele : { ...ele, endLine: ele.line, endCol: ele.col + ele.value.length - 1 }),
+		...('endLine' in ele ? ele : { ...ele, endLine: ele.line, endCol: ele.col + ele.value.length }),
 	}); // 若来 ErrorNode，自然以 ErrorNode 的 message 覆盖；若是 Token，尾端位置为 Token 末尾
 }
 
@@ -49,8 +44,8 @@ const parseIntOrNull = (input: string | undefined): number | null => {
 export function parseError(message: string): MeaoiuError {
 	const errorParams = {
 		message,
-		line: 0,
-		col: 0,
+		line: -1,
+		col: -1,
 	};
 	const match = message.match(/\[(\d+):(\d+)\]/);
 	if (match) {

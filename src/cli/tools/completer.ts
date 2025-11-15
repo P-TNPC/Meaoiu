@@ -1,16 +1,22 @@
 // src/cli/tools/completer.ts
 
-import { getCompletions, type SymbolKind } from '../../services/completions.js';
+import { getCompletions, SuggestionKind } from '../../services/completions.js';
 import { parsePosition } from './toolUtils.js';
 
 export function complete(sourceCode: string, posRaw: string) {
 	const pos = parsePosition(posRaw);
 
-	const KINDS: SymbolKind[] = ['variable', 'function', 'parameter', 'keyword'] as const;
+	type KindString = 'variable' | 'function' | 'parameter' | 'keyword';
+	const kindMap: Record<SuggestionKind, KindString> = {
+		[SuggestionKind.FUNCTION]: 'function',
+		[SuggestionKind.VARIABLE]: 'variable',
+		[SuggestionKind.KEYWORD]: 'keyword',
+		[SuggestionKind.REFERENCE]: 'parameter',
+	};
 	const completions = getCompletions(sourceCode, pos);
-	const suggestions = completions.reduce<Record<SymbolKind, string[]>>(
+	const suggestions = completions.reduce<Record<KindString, string[]>>(
 		(acc, { label, kind }) => {
-			const k = KINDS.includes(kind) ? kind : 'variable';
+			const k = kindMap[kind] ?? 'variable';
 			acc[k].push(label);
 			return acc;
 		},

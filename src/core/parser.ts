@@ -123,7 +123,7 @@ export class Parser {
 		const anchorCol = prev.col + prev.value.length;
 
 		const errMsg = `语法错误喵: ${type === TokenType.TERMINATOR ? `在 '${prev.value}' 后面需要一个 '~' 结尾喵!` : message}`;
-		const error = new MeaoiuError({ message: errMsg, line: anchorLine, col: anchorCol });
+		const error = new MeaoiuError({ message: errMsg, line: anchorLine, col: anchorCol, endCol: anchorCol + 1 });
 
 		if (this.mode === 'strict') throw error;
 		// tolerant 模式记录错误
@@ -135,7 +135,7 @@ export class Parser {
 
 	private endLoc(token?: Token): { endLine: number; endCol: number } {
 		if (!token) token = this.tokens[this.position - 1] ?? this.current();
-		return { endLine: token.line, endCol: token.col + token.value.length - 1 };
+		return { endLine: token.line, endCol: token.col + token.value.length };
 	}
 
 	private synchronize(): void {
@@ -587,7 +587,7 @@ export class Parser {
 					const line = prevToken.line;
 					const col = prevToken.col + prevToken.value.length;
 					this.position--;
-					throw new MeaoiuError({ message: '语法错误喵: 这里要用「有好」或「有坏」闭合喵', line, col });
+					throw new MeaoiuError({ message: '语法错误喵: 这里要用「有好」或「有坏」闭合喵', line, col, endCol: col + 1 });
 			}
 
 			l = {
@@ -627,7 +627,7 @@ export class Parser {
 					const line = prevToken.line;
 					const col = prevToken.col + prevToken.value.length;
 					this.position--;
-					throw new MeaoiuError({ message: '语法错误喵: 这里要用「都好」或「都坏」闭合喵', line, col });
+					throw new MeaoiuError({ message: '语法错误喵: 这里要用「都好」或「都坏」闭合喵', line, col, endCol: col + 1 });
 			}
 
 			l = {

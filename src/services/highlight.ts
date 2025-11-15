@@ -1,11 +1,12 @@
 // src/services/highlight.ts
 
 import { NodeType } from '../core/ast.js';
-import { tokenize } from '../core/tokenizer.js';
-import { Parser } from '../core/parser.js';
-import { analyzeSymbols } from './utils/symbolAnalyzer.js';
 import { builtInFunctionNames } from '../core/builtIns.js';
+import { Parser } from '../core/parser.js';
+import { tokenize } from '../core/tokenizer.js';
 import { buildParentMap } from './utils/astUtils.js';
+import { analyzeSymbols } from './utils/symbolAnalyzer.js';
+import { SymbolKind, SymbolTag } from './utils/symbolTable.js';
 
 type HighlightTokens = { line: number; col: number; length: number; tokenType: number; tokenModifiers: number }[];
 
@@ -13,6 +14,12 @@ type HighlightTokens = { line: number; col: number; length: number; tokenType: n
 const tokenTypes = ['variable', 'parameter', 'function'];
 const tokenModifiers = ['declaration', 'modification', 'defaultLibrary', 'deprecated'];
 export const legend = { tokenTypes, tokenModifiers };
+
+const typeIndexMap = {
+	[SymbolKind.VARIABLE]: 0,
+	[SymbolKind.PARAMETER]: 1,
+	[SymbolKind.FUNCTION]: 2,
+} as const satisfies Record<SymbolKind, number>;
 
 export function getHighlightTokens(sourceCode: string) {
 	const highlightTokens: HighlightTokens = [];
@@ -22,8 +29,8 @@ export function getHighlightTokens(sourceCode: string) {
 
 	const { symbolMap } = analyzeSymbols(ast, builtInFunctionNames);
 	symbolMap.forEach(symbolInfo => {
-		const typeIndex = tokenTypes.indexOf(symbolInfo.kind);
-		if (typeIndex === -1) return;
+		const typeIndex = typeIndexMap[symbolInfo.kind];
+		if (typeIndex === undefined) return;
 
 		// 收集声明
 		symbolInfo.declarations.forEach(dec => {
@@ -31,8 +38,8 @@ export function getHighlightTokens(sourceCode: string) {
 			if (symbolInfo.isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
 			const modBitmask = modifiers.reduce((a, b) => a | (1 << b), 0);
 			highlightTokens.push({
-				line: dec.line - 1,
-				col: dec.col - 1,
+				line: dec.line,
+				col: dec.col,
 				length: symbolInfo.name.length,
 				tokenType: typeIndex,
 				tokenModifiers: modBitmask,
@@ -43,15 +50,15 @@ export function getHighlightTokens(sourceCode: string) {
 		symbolInfo.references.forEach(ref => {
 			const modifiers = [];
 			if (symbolInfo.isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
-			if (symbolInfo.isMoved) modifiers.push(tokenModifiers.indexOf('deprecated'));
+			if (symbolInfo.tag === SymbolTag.DECAYED) modifiers.push(tokenModifiers.indexOf('deprecated'));
 			const parent = parentMap.get(ref);
 			if (parent?.type === NodeType.AssignmentStatement && parent.assignee === ref) {
 				modifiers.push(tokenModifiers.indexOf('modification'));
 			}
 			const modBitmask = modifiers.reduce((a, b) => a | (1 << b), 0);
 			highlightTokens.push({
-				line: ref.line - 1,
-				col: ref.col - 1,
+				line: ref.line,
+				col: ref.col,
 				length: ref.symbol.length,
 				tokenType: typeIndex,
 				tokenModifiers: modBitmask,
