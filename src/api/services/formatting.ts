@@ -1,9 +1,9 @@
-// src/services/formatting.ts
+// src/api/services/formatting.ts
 
-import type * as AST from '../core/ast.js';
-import { AssignmentKind, LogicalOperator, NodeType } from '../core/ast.js';
-import { tokenize, isKeyword } from '../core/tokenizer.js';
-import { Parser } from '../core/parser.js';
+import type * as AST from '../../core/ast.js';
+import { AssignmentKind, LogicalOperator, NodeType } from '../../core/ast.js';
+import { ParseMode, Parser } from '../../core/parser.js';
+import { isKeyword, tokenize } from '../../core/tokenizer.js';
 
 interface FormattingOptions {
 	indentChar: string;
@@ -227,7 +227,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 }
 
 export function getFormattedCode(sourceCode: string): string {
-	const parser = new Parser(tokenize(sourceCode, { ignoreComments: false }), 'tolerant');
+	const parser = new Parser(tokenize(sourceCode, { ignoreComments: false }), ParseMode.TOLERANT);
 	const { program: ast } = parser.parse();
 	const options: FormattingOptions = { indentChar: '\t', level: 0 };
 	return printNodeContent(ast, options);

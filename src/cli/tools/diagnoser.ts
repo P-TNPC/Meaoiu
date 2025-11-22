@@ -1,14 +1,15 @@
 // src/cli/tools/diagnoser.ts
 
+import { getDiagnostics } from '../../api/services/diagnostics.js';
+import { ServiceState } from '../../api/serviceState.js';
 import { formatError } from './toolUtils.js';
-import { getDiagnostics } from '../../services/diagnostics.js';
 
 export function diagnose(sourceCode: string, filePath: string): void {
 	console.log('-----------------------------');
 	console.log(`[诊断器] 正在分析 ${filePath} ...`);
 	console.log('-----------------------------');
 	try {
-		const { syntaxErrors, semanticErrors } = getDiagnostics(sourceCode);
+		const { syntaxErrors, semanticErrors } = getDiagnostics(new ServiceState(0, sourceCode));
 
 		const noErrorTypes = [
 			{ type: '语法', errors: syntaxErrors },

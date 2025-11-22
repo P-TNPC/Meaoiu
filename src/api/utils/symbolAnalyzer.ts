@@ -1,9 +1,9 @@
-// src/services/utils/symbolAnalyzer.ts
+// src/api/utils/symbolAnalyzer.ts
 
 import type * as AST from '../../core/ast.js';
 import { AssignmentKind, NodeType } from '../../core/ast.js';
 import type { builtInFunctionNames } from '../../core/builtIns.js';
-import { MeaoiuError, errorFrom } from '../../core/error.js';
+import { errorFrom, type MeaoiuError } from '../../core/error.js';
 import { MeaoiuType, checkArithmeticOperation, checkComparisonOperation } from '../../core/typedef.js';
 import { SymbolKind, SymbolTag, type Scope, type SymbolInfo } from './symbolTable.js';
 
@@ -486,15 +486,14 @@ class SymbolAnalyzer {
 	}
 }
 
-export function analyzeSymbols(
-	ast: AST.Program,
-	builtInNames: typeof builtInFunctionNames
-): {
+export type AnalyzeResult = {
 	rootScope: Scope;
 	errors: MeaoiuError[];
-	symbolMap: Map<AST.Node, SymbolInfo>;
-	nodeScopeMap: Map<AST.Node, Scope>;
-} {
+	symbolMap: SymbolAnalyzer['symbolMap'];
+	nodeScopeMap: SymbolAnalyzer['nodeScopeMap'];
+};
+
+export function analyzeSymbols(ast: AST.Program, builtInNames: typeof builtInFunctionNames): AnalyzeResult {
 	const rootScope: Scope = { children: [], symbols: new Map() };
 	for (const name of builtInNames) {
 		rootScope.symbols.set(name, {

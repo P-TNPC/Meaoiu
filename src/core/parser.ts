@@ -5,8 +5,18 @@ import { AssignmentKind, LogicalOperator, NodeType } from './ast.js';
 import { MeaoiuError, errorFrom } from './error.js';
 import { OP_ARITH, OP_COMP, OP_COMP_E, type Token, TokenType } from './tokenizer.js';
 
+export const enum ParseMode {
+	STRICT,
+	TOLERANT,
+}
+
+export type ParseResult = {
+	program: AST.Program;
+	errors: MeaoiuError[];
+};
+
 export class Parser {
-	private mode: 'strict' | 'tolerant';
+	private mode: ParseMode;
 	private tokens: Token[];
 	private position = 0;
 	private blockDepth = 0;
@@ -15,7 +25,7 @@ export class Parser {
 	// 悄悄话缓存：advance / drainCommentsAhead 会把遇到的 COMMENT 放进这里
 	private commentBuffer: Token[] = [];
 
-	constructor(tokens: Token[], mode: 'strict' | 'tolerant' = 'strict') {
+	constructor(tokens: Token[], mode = ParseMode.STRICT) {
 		// 确保有 EOF 哨兵，避免边界问题
 		if (!tokens.length || tokens[tokens.length - 1]?.type !== TokenType.EOF) {
 			tokens = tokens.concat([{ type: TokenType.EOF, value: 'EndOfFile', line: -1, col: -1 }]);
@@ -125,7 +135,7 @@ export class Parser {
 		const errMsg = `语法错误喵: ${type === TokenType.TERMINATOR ? `在 '${prev.value}' 后面需要一个 '~' 结尾喵!` : message}`;
 		const error = new MeaoiuError({ message: errMsg, line: anchorLine, col: anchorCol, endCol: anchorCol + 1 });
 
-		if (this.mode === 'strict') throw error;
+		if (this.mode === ParseMode.STRICT) throw error;
 		// tolerant 模式记录错误
 		this.errors.push(error);
 
@@ -196,7 +206,7 @@ export class Parser {
 		return { type: NodeType.ErrorNode, message, line, col, endLine, endCol };
 	}
 
-	public parse(): { program: AST.Program; errors: MeaoiuError[] } {
+	public parse(): ParseResult {
 		const startToken = this.current();
 		const program: AST.Program = {
 			type: NodeType.Program,
@@ -353,7 +363,7 @@ export class Parser {
 			return s;
 		} catch (e) {
 			const error = e instanceof MeaoiuError ? e : errorFrom(sT, e instanceof Error ? e.message : String(e));
-			if (this.mode !== 'tolerant') throw error;
+			if (this.mode !== ParseMode.TOLERANT) throw error;
 			this.errors.push(error);
 			this.synchronize();
 			return this.createErrorNode(error);
@@ -550,7 +560,7 @@ export class Parser {
 	}
 
 	private parseExpression(): AST.Expression {
-		if (this.mode === 'tolerant') {
+		if (this.mode === ParseMode.TOLERANT) {
 			try {
 				return this.parseLogicalOrExpression();
 			} catch (e) {
@@ -864,7 +874,7 @@ export class Parser {
 				}
 				// 未知 token：在 strict 模式抛；在 tolerant 模式生成 ErrorNode 并至少前进一个 token
 				const err = errorFrom(t, `语法错误喵: ${errMsg}`);
-				if (this.mode !== 'tolerant') throw err;
+				if (this.mode !== ParseMode.TOLERANT) throw err;
 				this.errors.push(err);
 				// 已经 advance 了一次（t 是 advance 返回的），此处不用再次 advance
 				return this.createErrorNode(err);

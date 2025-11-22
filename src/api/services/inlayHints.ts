@@ -1,14 +1,11 @@
-// src/services/inlayHints.ts
+// src/api/services/inlayHints.ts
 
-import * as AST from '../core/ast.js';
-import { NodeType } from '../core/ast.js';
-import { tokenize } from '../core/tokenizer.js';
-import { Parser } from '../core/parser.js';
-import { analyzeSymbols } from './utils/symbolAnalyzer.js';
-import { builtInFunctionNames } from '../core/builtIns.js';
-import { SymbolKind, SymbolTag, type SymbolInfo } from './utils/symbolTable.js';
-import { buildParentMap, isNodeArray } from './utils/astUtils.js';
-import { MeaoiuType, typeNames } from '../core/typedef.js';
+import type * as AST from '../../core/ast.js';
+import { NodeType } from '../../core/ast.js';
+import { MeaoiuType, typeNames } from '../../core/typedef.js';
+import type { ServiceState } from '../serviceState.js';
+import { buildParentMap, isNodeArray } from '../utils/astUtils.js';
+import { SymbolKind, SymbolTag, type SymbolInfo } from '../utils/symbolTable.js';
 
 /**
  * 内联提示的位置
@@ -67,15 +64,13 @@ function extractParamNames(paramsBlock: AST.BlockStatement): string[] {
 /**
  * 主函数：获取源代码的内联提示
  */
-export function getInlayHints(sourceCode: string): InlayHint[] {
+export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 	const hints: InlayHint[] = [];
 
-	// 1. 解析代码并进行符号分析
-	const parser = new Parser(tokenize(sourceCode, { ignoreComments: true }), 'tolerant');
-	const { program: ast } = parser.parse();
-	if (!ast) return hints;
+	const { program: ast } = serviceState.parseResult;
+	const parentMap = buildParentMap(ast); // 构建父节点映射
 
-	const { symbolMap } = analyzeSymbols(ast, builtInFunctionNames);
+	const { symbolMap } = serviceState.analyzeResult;
 
 	// 生成变量类型和引用源提示
 	symbolMap.forEach((symbolInfo, node) => {
@@ -100,9 +95,6 @@ export function getInlayHints(sourceCode: string): InlayHint[] {
 			// paddingLeft: true,
 		});
 	});
-
-	// 构建父节点映射
-	const parentMap = buildParentMap(ast);
 
 	// 生成函数参数名提示
 	function walk(node: AST.Node) {

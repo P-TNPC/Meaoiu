@@ -1,11 +1,9 @@
-// src/services/completions.ts
+// src/api/services/completions.ts
 
-import type * as AST from '../core/ast.js';
-import { builtInFunctionNames } from '../core/builtIns.js';
-import { Parser } from '../core/parser.js';
-import { sortedKeywords, tokenize } from '../core/tokenizer.js';
-import { analyzeSymbols } from './utils/symbolAnalyzer.js';
-import { SymbolKind, type Scope } from './utils/symbolTable.js';
+import type * as AST from '../../core/ast.js';
+import { sortedKeywords } from '../../core/tokenizer.js';
+import type { ServiceState } from '../serviceState.js';
+import { SymbolKind, type Scope } from '../utils/symbolTable.js';
 
 // 找到指定位置所在的最小作用域
 function findScopeAt(position: { line: number; col: number }, nodeScopeMap: Map<AST.Node, Scope>): Scope | undefined {
@@ -60,12 +58,8 @@ function getVisibleSymbols(scope: Scope): Suggestion[] {
 	return symbols;
 }
 
-export function getCompletions(sourceCode: string, position: { line: number; col: number }): Suggestion[] {
-	const tokens = tokenize(sourceCode, { ignoreComments: true });
-	const parser = new Parser(tokens, 'tolerant');
-	const { program: ast } = parser.parse();
-
-	const { rootScope, nodeScopeMap } = analyzeSymbols(ast, builtInFunctionNames);
+export function getCompletions(serviceState: ServiceState, position: { line: number; col: number }): Suggestion[] {
+	const { rootScope, nodeScopeMap } = serviceState.analyzeResult;
 	const currentScope = findScopeAt(position, nodeScopeMap) ?? rootScope;
 
 	const symbolSuggestions = getVisibleSymbols(currentScope);

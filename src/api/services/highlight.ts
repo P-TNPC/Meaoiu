@@ -1,14 +1,11 @@
-// src/services/highlight.ts
+// src/api/services/highlight.ts
 
-import { NodeType } from '../core/ast.js';
-import { builtInFunctionNames } from '../core/builtIns.js';
-import { Parser } from '../core/parser.js';
-import { tokenize } from '../core/tokenizer.js';
-import { buildParentMap } from './utils/astUtils.js';
-import { analyzeSymbols } from './utils/symbolAnalyzer.js';
-import { SymbolKind, SymbolTag } from './utils/symbolTable.js';
+import { NodeType } from '../../core/ast.js';
+import type { ServiceState } from '../serviceState.js';
+import { buildParentMap } from '../utils/astUtils.js';
+import { SymbolKind, SymbolTag } from '../utils/symbolTable.js';
 
-type HighlightTokens = { line: number; col: number; length: number; tokenType: number; tokenModifiers: number }[];
+export type HighlightToken = { line: number; col: number; length: number; tokenType: number; tokenModifiers: number };
 
 // 定义语义 Token 图例
 const tokenTypes = ['variable', 'parameter', 'function'];
@@ -21,13 +18,14 @@ const typeIndexMap = {
 	[SymbolKind.FUNCTION]: 2,
 } as const satisfies Record<SymbolKind, number>;
 
-export function getHighlightTokens(sourceCode: string) {
-	const highlightTokens: HighlightTokens = [];
+export function getHighlightTokens(serviceState: ServiceState): HighlightToken[] {
+	const highlightTokens: HighlightToken[] = [];
 
-	const { program: ast } = new Parser(tokenize(sourceCode, { ignoreComments: true }), 'tolerant').parse();
+	const { program: ast } = serviceState.parseResult;
 	const parentMap = buildParentMap(ast);
 
-	const { symbolMap } = analyzeSymbols(ast, builtInFunctionNames);
+	const { symbolMap } = serviceState.analyzeResult;
+
 	symbolMap.forEach(symbolInfo => {
 		const typeIndex = typeIndexMap[symbolInfo.kind];
 		if (typeIndex === undefined) return;

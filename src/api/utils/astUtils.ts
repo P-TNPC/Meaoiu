@@ -1,6 +1,6 @@
-// src/services/utils/astUtils.ts
+// src/api/utils/astUtils.ts
 
-import * as AST from '../../core/ast.js';
+import type * as AST from '../../core/ast.js';
 import { NodeType } from '../../core/ast.js';
 import type { Token } from '../../core/tokenizer.js';
 

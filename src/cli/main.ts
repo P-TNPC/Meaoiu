@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // src/cli/main.ts - Meaoiu CLI
 
-import fs from 'fs';
 import { Command } from 'commander';
-import { createRuntimeIO } from '../core/run/io.js';
+import { readFileSync } from 'fs';
 import { createBuiltInFunctions } from '../core/builtIns.js';
-import { run } from './tools/starter.js';
-import { diagnose } from './tools/diagnoser.js';
+import { createRuntimeIO } from '../core/run/io.js';
 import { complete } from './tools/completer.js';
+import { diagnose } from './tools/diagnoser.js';
 import { format } from './tools/formatter.js';
 import { definition, hover, references } from './tools/lens.js';
+import { run } from './tools/starter.js';
 import { prompt } from './tools/toolUtils.js';
 
 const program = new Command();
@@ -27,7 +27,7 @@ program
 	.description('Meaoiu 语言工具集 — 运行、诊断、格式化、查定义/引用、补全')
 	.action(async (file: string, options: Record<string, string>) => {
 		try {
-			const sourceCode = fs.readFileSync(file, 'utf-8');
+			const sourceCode = readFileSync(file, 'utf-8');
 
 			// 优先命令式选项（诊断 / LSP 式功能）
 			const lspActions: Record<string, (arg?: string) => void> = {

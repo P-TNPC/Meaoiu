@@ -99,19 +99,20 @@ export type Token = {
 export type TokenizerOptions = {
 	ignoreComments?: boolean;
 	convertFullWidth?: boolean;
+	useOnebased?: boolean;
 };
 
-export function tokenize(sourceCode: string, options: TokenizerOptions, oneBased = true): Token[] {
-	options.convertFullWidth ??= true;
-	if (options?.convertFullWidth) sourceCode = preprocess(sourceCode);
+export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[] {
+	const { ignoreComments = true, convertFullWidth = true, useOnebased = true } = options ?? {};
+	if (convertFullWidth) sourceCode = preprocess(sourceCode);
 
 	// 小本本：记函数
 	const functionNames = new Set<string>(builtInFunctionNames);
 	let expectingFuncNameAfterParamEnd = false;
 
 	const tokens: Token[] = [];
-	let line = +oneBased;
-	let col = +oneBased;
+	let line = +useOnebased;
+	let col = +useOnebased;
 	let cursor = 0;
 
 	const advance = (steps = 1) => {
@@ -155,7 +156,7 @@ export function tokenize(sourceCode: string, options: TokenizerOptions, oneBased
 
 			if (nestingLevel !== 0) console.error('警告喵: 文件结尾有未闭合的悄悄话！');
 
-			if (!options?.ignoreComments) {
+			if (!ignoreComments) {
 				tokens.push({ type: TokenType.COMMENT, value: commentContent, line: commentStartLine, col: commentStartCol });
 			}
 			continue;

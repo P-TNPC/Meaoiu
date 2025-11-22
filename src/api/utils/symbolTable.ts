@@ -1,4 +1,4 @@
-// src/services/utils/symbolTable.ts
+// src/api/utils/symbolTable.ts
 
 import type * as AST from '../../core/ast.js';
 import type { MeaoiuType } from '../../core/typedef.js';

@@ -1,7 +1,7 @@
 // src/cli/tools/formatter.ts
 
 import { writeFile } from 'fs/promises';
-import { getFormattedCode } from '../../services/formatting.js';
+import { getFormattedCode } from '../../api/services/formatting.js';
 import { formatError, prompt } from './toolUtils.js';
 
 export async function format(sourceCode: string, filePath: string) {

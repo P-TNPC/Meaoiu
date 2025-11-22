@@ -1,12 +1,9 @@
-// src/services/hover.ts
+// src/api/services/hover.ts
 
-import { tokenize } from '../core/tokenizer.js';
-import { Parser } from '../core/parser.js';
-import { analyzeSymbols } from './utils/symbolAnalyzer.js';
-import { builtInFunctionNames } from '../core/builtIns.js';
-import { findIdentifierAt } from './utils/astUtils.js';
-import { typeNames } from '../core/typedef.js';
-import { SymbolKind, SymbolTag } from './utils/symbolTable.js';
+import { typeNames } from '../../core/typedef.js';
+import type { ServiceState } from '../serviceState.js';
+import { findIdentifierAt } from '../utils/astUtils.js';
+import { SymbolKind, SymbolTag } from '../utils/symbolTable.js';
 
 type HoverInfo = {
 	text: string;
@@ -22,16 +19,13 @@ const kindMap = {
 	[SymbolKind.PARAMETER]: 'parameter',
 } as const satisfies Record<SymbolKind, string>;
 
-export function getHoverInfo(sourceCode: string, position: { line: number; col: number }): HoverInfo | undefined {
-	const parser = new Parser(tokenize(sourceCode, { ignoreComments: true }), 'tolerant');
-	const { program: ast } = parser.parse();
-	if (!ast) return undefined;
+export function getHoverInfo(serviceState: ServiceState, position: { line: number; col: number }): HoverInfo | undefined {
+	const { program: ast } = serviceState.parseResult;
 
 	const identifierNode = findIdentifierAt(ast, position.line, position.col);
 	if (!identifierNode) return undefined;
 
-	const { symbolMap } = analyzeSymbols(ast, builtInFunctionNames);
-	const symbolInfo = symbolMap.get(identifierNode);
+	const symbolInfo = serviceState.analyzeResult.symbolMap.get(identifierNode);
 	if (!symbolInfo) return undefined;
 
 	const declaration = symbolInfo.declarations[0];

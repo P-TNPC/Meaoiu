@@ -1,6 +1,7 @@
 // src/cli/tools/completer.ts
 
-import { getCompletions, SuggestionKind } from '../../services/completions.js';
+import { getCompletions, SuggestionKind } from '../../api/services/completions.js';
+import { ServiceState } from '../../api/serviceState.js';
 import { parsePosition } from './toolUtils.js';
 
 export function complete(sourceCode: string, posRaw: string) {
@@ -13,7 +14,8 @@ export function complete(sourceCode: string, posRaw: string) {
 		[SuggestionKind.KEYWORD]: 'keyword',
 		[SuggestionKind.REFERENCE]: 'parameter',
 	};
-	const completions = getCompletions(sourceCode, pos);
+
+	const completions = getCompletions(new ServiceState(0, sourceCode), pos);
 	const suggestions = completions.reduce<Record<KindString, string[]>>(
 		(acc, { label, kind }) => {
 			const k = kindMap[kind] ?? 'variable';
