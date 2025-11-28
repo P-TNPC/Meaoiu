@@ -5,21 +5,24 @@ import { AssignmentKind, LogicalOperator, NodeType } from '../ast.js';
 import { type BuiltInFunctions, isBuiltInFunctionName } from '../builtIns.js';
 import { MeaoiuError, errorFrom } from '../error.js';
 import { checkArithmeticOperation, checkComparisonOperation, getMeaoiuType, MeaoiuType, typeNames } from '../typedef.js';
-import { Environment } from './environment.js';
+import { Environment, type Variable } from './environment.js';
 import logger from './logger.js';
 
 const BREAK_SIGNAL = { type: 'BREAK_SIGNAL' } as const; // '累了~'
 const CONTINUE_SIGNAL = { type: 'CONTINUE_SIGNAL' } as const; //'偷袭~'
 class ReturnValue {
-	constructor(public value: unknown) {}
+	constructor(public value: Variable) {}
 } // '叼回来 [值]~'
 class LoopValue {
-	constructor(public value: unknown) {}
+	constructor(public value: Variable) {}
 } // '偷袭 <值>~'
 
 const ReturnOrAmbush: Record<
 	(AST.ReturnStatement | AST.AmbushStatement)['type'],
-	{ emptySignal: ReturnValue | typeof CONTINUE_SIGNAL; valueHandler: (value: unknown) => unknown }
+	{
+		emptySignal: ReturnValue | typeof CONTINUE_SIGNAL;
+		valueHandler: (value: Variable) => unknown;
+	}
 > = {
 	[NodeType.ReturnStatement]: {
 		emptySignal: new ReturnValue(null),
@@ -56,7 +59,7 @@ export async function evaluate(
 			case NodeType.Identifier:
 				return env.lookup(node.symbol);
 			case NodeType.Program: {
-				let lastEvaluatedInProgram: any;
+				let lastEvaluatedInProgram: unknown;
 				for (const statement of node.body) {
 					lastEvaluatedInProgram = await evaluate(statement, env, builtIns, boundaryEnv);
 				}
@@ -143,12 +146,12 @@ export async function evaluate(
 			}
 			case NodeType.SequenceExpression: {
 				const { sections, operators } = node;
-				let accVal = env.resolveValue(await evaluate(sections[0]!, env, builtIns, boundaryEnv));
+				let accVal: any = env.resolveValue(await evaluate(sections[0]!, env, builtIns, boundaryEnv));
 
 				for (let i = 0; i < operators.length; i++) {
 					const opToken = operators[i]!,
 						op = opToken.value;
-					const nextVal = env.resolveValue(await evaluate(sections[i + 1]!, env, builtIns, boundaryEnv));
+					const nextVal: any = env.resolveValue(await evaluate(sections[i + 1]!, env, builtIns, boundaryEnv));
 
 					switch (op) {
 						case '==':
@@ -167,7 +170,8 @@ export async function evaluate(
 
 					switch (op) {
 						case '+':
-							accVal += nextVal;
+							if (accType === MeaoiuType.COLLECTION) accVal = accVal.createMergedView(nextVal);
+							else accVal += nextVal;
 							break;
 						case '-':
 							accVal -= nextVal;
@@ -187,8 +191,8 @@ export async function evaluate(
 			case NodeType.ArithmeticExpression: {
 				const { operator: op, left, right } = node;
 
-				const leftVal = env.resolveValue(await evaluate(left, env, builtIns, boundaryEnv));
-				const rightVal = env.resolveValue(await evaluate(right, env, builtIns, boundaryEnv));
+				const leftVal: any = env.resolveValue(await evaluate(left, env, builtIns, boundaryEnv));
+				const rightVal: any = env.resolveValue(await evaluate(right, env, builtIns, boundaryEnv));
 
 				const leftType = getMeaoiuType(leftVal);
 				const rightType = getMeaoiuType(rightVal);
@@ -215,12 +219,14 @@ export async function evaluate(
 				}
 
 				let overallResult = true;
-				let currentLeftVal = env.resolveValue(await evaluate(expressions[0]!, env, builtIns, boundaryEnv));
+				let currentLeftVal: any = env.resolveValue(await evaluate(expressions[0]!, env, builtIns, boundaryEnv));
 
 				for (let i = 0; i < operators.length; i++) {
 					const opToken = operators[i]!,
 						op = opToken.value;
-					const currentRightVal = env.resolveValue(await evaluate(expressions[i + 1]!, env, builtIns, boundaryEnv));
+					const currentRightVal: any = env.resolveValue(
+						await evaluate(expressions[i + 1]!, env, builtIns, boundaryEnv)
+					);
 
 					const leftType = getMeaoiuType(currentLeftVal);
 					const rightType = getMeaoiuType(currentRightVal);
@@ -465,22 +471,20 @@ export async function evaluate(
 				const argumentRef = await evaluate(argument, env, builtIns, boundaryEnv);
 				const argumentValue = env.resolveValue(argumentRef);
 
-				if (op === AssignmentKind.COPY) {
-					// 高仿
-					if (argumentValue instanceof Environment) return argumentValue.createShallowCopy();
-					return argumentValue;
+				switch (op) {
+					case AssignmentKind.COPY: // 高仿
+						return argumentValue instanceof Environment ? argumentValue.createShallowCopy() : argumentValue;
+					case AssignmentKind.MOVE: // 抢走
+						if (!argumentRef?.isVariableReference) {
+							throw errorFrom(argument, `运行错误喵: 只能抢走碗里的东西喵！`);
+						}
+						// 标记源头为已移动
+						argumentRef.scope.variables.get(argumentRef.name).moved = true;
+						return argumentValue;
+					default: // 理论不可达
+						const _op: never = op;
+						throw errorFrom(argument, `运行错误喵: 坏掉的操作符喵！${_op}`);
 				}
-
-				if (op === AssignmentKind.MOVE) {
-					// 抢走
-					if (!argumentRef?.isVariableReference) {
-						throw errorFrom(argument, `运行错误喵: 只能抢走一个变量，不能抢走一个表达式结果喵！`);
-					}
-					// 标记源头为已移动
-					argumentRef.scope.variables.get(argumentRef.name).moved = true;
-					return argumentValue;
-				}
-				return null;
 			}
 			case NodeType.ExpressionStatement:
 				return await evaluate(node.expression, env, builtIns, boundaryEnv);
@@ -510,25 +514,18 @@ async function _evaluateCollectionElement(
 ): Promise<number> {
 	const expr = stmt.expression;
 
-	let name: string | null = null;
+	let name: string | undefined;
 	let kind: AssignmentKind = AssignmentKind.COPY;
-	let valueToAssign: any;
 
 	if (expr.type === NodeType.Identifier) {
 		// 元素是 `a` -> 声明为 `a`，并创建引用
 		name = expr.symbol;
 		kind = AssignmentKind.REFERENCE;
-		valueToAssign = await evaluateFn(expr, blockEnv, builtIns, boundaryEnv);
-	} else if (expr.type === NodeType.UnaryExpression) {
+	} else if (expr.type === NodeType.UnaryExpression && expr.argument.type === NodeType.Identifier) {
 		// 元素是 `高仿 a` 或 `抢走 a`
-		valueToAssign = await evaluateFn(expr, blockEnv, builtIns, boundaryEnv); // 得到最终的值
-		kind = AssignmentKind.COPY;
-		if (expr.argument.type === NodeType.Identifier) name = expr.argument.symbol;
-	} else {
-		// 元素是字面量（'毛线球'）或嵌套纸箱（[=...=]）
-		valueToAssign = await evaluateFn(expr, blockEnv, builtIns, boundaryEnv);
-		kind = AssignmentKind.COPY;
+		name = expr.argument.symbol;
 	}
+	const valueToAssign = await evaluateFn(expr, blockEnv, builtIns, boundaryEnv); // 得到最终的值
 
 	// 如果没有显式名字，就自动生成一个防碰撞的名字
 	if (!name) {

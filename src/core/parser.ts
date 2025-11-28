@@ -258,29 +258,24 @@ export class Parser {
 	}
 
 	private parseVariableDeclaration(isImplicit: boolean = false): AST.VariableDeclaration {
-		const sT = this.current();
+		const { line, col } = this.current();
 		if (!isImplicit) this.expect(TokenType.KEYWORD_USE, '声明需要以 "蹭" 开头喵'); // 显式声明，消费关键字
 		const identifier = this.parseIdentifier();
+
+		const currentType = this.current().type;
 		let initialization: AST.VariableDeclaration['initialization'];
 
 		// 检查后面是否紧跟赋值关键字
 		if (
-			this.current().type === TokenType.KEYWORD_IS ||
-			this.current().type === TokenType.KEYWORD_LIKE ||
-			this.current().type === TokenType.KEYWORD_ONLY
+			currentType === TokenType.KEYWORD_IS ||
+			currentType === TokenType.KEYWORD_LIKE ||
+			currentType === TokenType.KEYWORD_ONLY
 		) {
 			initialization = this.parseAssignmentStatement(identifier);
 		}
 
 		const eL = this.endLoc();
-		return {
-			type: NodeType.VariableDeclaration,
-			identifier,
-			initialization,
-			line: sT.line,
-			col: sT.col,
-			...eL,
-		};
+		return { type: NodeType.VariableDeclaration, identifier, initialization, line, col, ...eL };
 	}
 
 	private parseFunctionDeclaration(): AST.FunctionDeclaration {
@@ -334,11 +329,12 @@ export class Parser {
 					throw errorFrom(sT, '语法错误喵: 假的语句喵!');
 				default:
 					const expr = this.parseExpression();
+					const currentType = this.current().type;
 
 					if (
-						this.current().type === TokenType.KEYWORD_IS ||
-						this.current().type === TokenType.KEYWORD_LIKE ||
-						this.current().type === TokenType.KEYWORD_ONLY
+						currentType === TokenType.KEYWORD_IS ||
+						currentType === TokenType.KEYWORD_LIKE ||
+						currentType === TokenType.KEYWORD_ONLY
 					) {
 						s = this.parseAssignmentStatement(expr); // 将解析好的表达式作为“被赋值者”传入
 					} else {
@@ -378,16 +374,16 @@ export class Parser {
 			[TokenType.KEYWORD_ONLY]: AssignmentKind.MOVE,
 		};
 
-		const k = assignMap[aT.type];
-		if (k === undefined) throw errorFrom(aT, `语法错误喵: 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
+		const kind = assignMap[aT.type];
+		if (kind === undefined) throw errorFrom(aT, `语法错误喵: 赋值需要使用 '就是', '就像', 或 '才是' 喵`);
 
-		const v = this.parseExpression();
+		const value = this.parseExpression();
 		const eL = this.endLoc();
 		return {
 			type: NodeType.AssignmentStatement,
 			assignee,
-			value: v,
-			kind: k,
+			value,
+			kind,
 			line: assignee.line,
 			col: assignee.col,
 			...eL,
@@ -410,7 +406,7 @@ export class Parser {
 	}
 
 	private parseInvertedIfStatement(): AST.IfStatement {
-		const sT = this.current();
+		const { line, col } = this.current();
 		const consequent = this.parseBlockStatement();
 		this.expect(TokenType.KEYWORD_CONFIRM, "想法后面需要一个 '好不好?' 来提问喵!");
 		const test = this.parseExpression();
@@ -438,15 +434,7 @@ export class Parser {
 		}
 
 		const eL = this.endLoc();
-		return {
-			type: NodeType.IfStatement,
-			test,
-			consequent,
-			alternate,
-			line: sT.line,
-			col: sT.col,
-			...eL,
-		};
+		return { type: NodeType.IfStatement, test, consequent, alternate, line, col, ...eL };
 	}
 
 	private parseLoopStatement(): AST.LoopStatement {
@@ -526,12 +514,12 @@ export class Parser {
 
 	private parseCollectionElement(): AST.Statement {
 		const currentType = this.current().type;
-		const peekType = this.peek().type;
 
 		// 模式一: 显式声明，例如 `蹭 a 就是 1`
 		if (currentType === TokenType.KEYWORD_USE) return this.parseVariableDeclaration(false);
 
 		// 模式二: 隐式声明，例如 `a 就是 1`
+		const peekType = this.peek().type;
 		if (
 			currentType === TokenType.IDENTIFIER &&
 			(peekType === TokenType.KEYWORD_IS || peekType === TokenType.KEYWORD_LIKE || peekType === TokenType.KEYWORD_ONLY)
@@ -545,18 +533,11 @@ export class Parser {
 	}
 
 	private parseCallExpression(): AST.CallExpression {
-		const sT = this.advance();
-		const argsExpr = this.parseExpression();
+		const { line, col } = this.advance();
+		const args = this.parseExpression();
 		const callee = this.parseIdentifier();
 
-		return {
-			type: NodeType.CallExpression,
-			callee,
-			args: argsExpr,
-			line: sT.line,
-			col: sT.col,
-			...this.endLoc(),
-		};
+		return { type: NodeType.CallExpression, callee, args, line, col, ...this.endLoc() };
 	}
 
 	private parseExpression(): AST.Expression {
@@ -597,7 +578,12 @@ export class Parser {
 					const line = prevToken.line;
 					const col = prevToken.col + prevToken.value.length;
 					this.position--;
-					throw new MeaoiuError({ message: '语法错误喵: 这里要用「有好」或「有坏」闭合喵', line, col, endCol: col + 1 });
+					throw new MeaoiuError({
+						message: '语法错误喵: 这里要用「有好」或「有坏」闭合喵',
+						line,
+						col,
+						endCol: col + 1,
+					});
 			}
 
 			l = {
@@ -637,7 +623,12 @@ export class Parser {
 					const line = prevToken.line;
 					const col = prevToken.col + prevToken.value.length;
 					this.position--;
-					throw new MeaoiuError({ message: '语法错误喵: 这里要用「都好」或「都坏」闭合喵', line, col, endCol: col + 1 });
+					throw new MeaoiuError({
+						message: '语法错误喵: 这里要用「都好」或「都坏」闭合喵',
+						line,
+						col,
+						endCol: col + 1,
+					});
 			}
 
 			l = {
@@ -655,49 +646,49 @@ export class Parser {
 	}
 
 	private parseSequenceExpression(): AST.Expression {
-		const sT = this.current();
-		const s = [this.parseComparisonExpression()];
-		const o: Token[] = [];
+		const { line, col } = this.current();
+		const sections = [this.parseComparisonExpression()];
+		const operators: Token[] = [];
 		let modeMask = 0; // 0 算术模式 | 1 比较模式
 
 		while (this.current().type === TokenType.OPERATOR && this.peek().type === TokenType.COMMA) {
 			const { value: op } = this.current();
 			switch ((+OP_ARITH.has(op) << 2) | (+OP_COMP_E.has(op) << 1) | modeMask) {
-				case 0: // 000 无算术|无比较|算术模式
-				case 1: // 001 无算术|无比较|比较模式
+				case 0x000: // 000 无算术|无比较|算术模式
+				case 0x001: // 001 无算术|无比较|比较模式
 					throw errorFrom(this.current(), `语法错误喵: '${op}' 不能用在节之间喵!`);
-				case 2: // 010 无算术|有比较|算术模式
+				case 0x010: // 010 无算术|有比较|算术模式
 					modeMask = 1; // 切为比较模式
 					break;
-				case 3: // 011 无算术|有比较|比较模式
-				case 4: // 100 有算术|无比较|算术模式
+				case 0x011: // 011 无算术|有比较|比较模式
+				case 0x100: // 100 有算术|无比较|算术模式
 					break;
-				case 5: // 101 有算术|无比较|比较模式
+				case 0x101: // 101 有算术|无比较|比较模式
 					throw errorFrom(this.current(), `语法错误喵: 比较之后就不能做算术了喵!`);
 				// 以下状态理论不可达：
 				// 110 有算术|有比较|算术模式
 				// 111 有算术|有比较|比较模式
 			}
 
-			o.push(this.advance());
+			operators.push(this.advance());
 			this.advance();
-			s.push(this.parseComparisonExpression());
+			sections.push(this.parseComparisonExpression());
 		}
 
-		if (s.length === 1) return s[0]!;
+		if (sections.length === 1) return sections[0]!;
 
 		return {
 			type: NodeType.SequenceExpression,
-			sections: s,
-			operators: o,
-			line: sT.line,
-			col: sT.col,
+			sections,
+			operators,
+			line,
+			col,
 			...this.endLoc(),
 		};
 	}
 
 	private parseComparisonExpression(): AST.Expression {
-		const sT = this.current();
+		const { line, col } = this.current();
 		const expressions = [this.parseAdditiveExpression()];
 		const operators: Token[] = [];
 
@@ -714,8 +705,8 @@ export class Parser {
 			type: NodeType.ComparisonExpression,
 			expressions,
 			operators,
-			line: sT.line,
-			col: sT.col,
+			line,
+			col,
 			...this.endLoc(),
 		};
 	}
@@ -881,7 +872,7 @@ export class Parser {
 		}
 
 		if (leading.length) {
-			node.leadingComments = node.leadingComments ?? [];
+			node.leadingComments ??= [];
 			node.leadingComments.push(...leading);
 		}
 

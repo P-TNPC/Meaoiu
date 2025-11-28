@@ -12,40 +12,46 @@ import { definition, hover, references } from './tools/lens.js';
 import { run } from './tools/starter.js';
 import { prompt } from './tools/toolUtils.js';
 
+const enum Option {
+	DIAGNOSE = 'diagnose',
+	FORMAT = 'format',
+	DEFINITION = 'definition',
+	REFERENCES = 'references',
+	HOVER = 'hover',
+	COMPLETE = 'complete',
+}
+
 const program = new Command();
 
 program
 	.name('meaoiu')
 	.usage('<file> [options]')
 	.argument('<file>', 'Meaoiu 源文件 (.miu)')
-	.option('--diagnose', '执行诊断（静态分析/错误提示）')
-	.option('--format', '格式化代码')
-	.option('--definition <line:col>', "查找定义，格式 '行:列'，例如 '2:3'")
-	.option('--references <line:col>', "查找引用，格式 '行:列'")
-	.option('--hover <line:col>', "悬停信息，格式 '行:列'")
-	.option('--complete <line:col>', "获取自动补全，格式 '行:列'")
+	.option(`--${Option.DIAGNOSE}`, '执行诊断（静态分析/错误提示）')
+	.option(`--${Option.FORMAT}`, '格式化代码')
+	.option(`--${Option.DEFINITION} <line:col>`, "查找定义，格式 '行:列'，例如 '2:3'")
+	.option(`--${Option.REFERENCES} <line:col>`, "查找引用，格式 '行:列'")
+	.option(`--${Option.HOVER} <line:col>`, "悬停信息，格式 '行:列'")
+	.option(`--${Option.COMPLETE} <line:col>`, "获取自动补全，格式 '行:列'")
 	.description('Meaoiu 语言工具集 — 运行、诊断、格式化、查定义/引用、补全')
 	.action(async (file: string, options: Record<string, string>) => {
 		try {
 			const sourceCode = readFileSync(file, 'utf-8');
 
 			// 优先命令式选项（诊断 / LSP 式功能）
-			const lspActions: Record<string, (arg?: string) => void> = {
-				diagnose: () => diagnose(sourceCode, file),
-				format: () => format(sourceCode, file),
-				definition: pos => definition(sourceCode, file, pos!),
-				references: pos => references(sourceCode, file, pos!),
-				hover: pos => hover(sourceCode, pos!),
-				complete: pos => complete(sourceCode, pos!),
+			const lspActions: Record<Option, (arg: string) => void> = {
+				[Option.DIAGNOSE]: () => diagnose(sourceCode, file),
+				[Option.FORMAT]: () => format(sourceCode, file),
+				[Option.DEFINITION]: pos => definition(sourceCode, file, pos),
+				[Option.REFERENCES]: pos => references(sourceCode, file, pos),
+				[Option.HOVER]: pos => hover(sourceCode, pos),
+				[Option.COMPLETE]: pos => complete(sourceCode, pos),
 			};
 
 			// 找出第一个被设置的选项（优先级顺序按 keys 顺序）
 			for (const [key, action] of Object.entries(lspActions)) {
 				const value = options[key];
-				if (value) {
-					action(value);
-					return;
-				}
+				if (value) return action(value);
 			}
 
 			// 默认行为：运行脚本（交互 I/O）

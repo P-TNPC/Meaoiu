@@ -3,19 +3,19 @@
 import type * as AST from '../ast.js';
 import { AssignmentKind } from '../ast.js';
 import logger from '../run/logger.js';
+import type { MeaoiuValue } from '../typedef.js';
 
-type VariableValue = { isReference: true; scope: Environment; name: string } | null /* 实际上还有 MeaoiuValue */;
-interface Variable {
-	value: VariableValue;
-	moved: boolean;
-}
-type VariableReference = { isVariableReference: true; scope: Environment; name: string; value: VariableValue };
+type ReferenceLink = { isReference: true; scope: Environment; name: string };
+type VariableValue = ReferenceLink | MeaoiuValue;
+type EnvVariable = { value: VariableValue; moved: boolean };
+export type VariableReference = { isVariableReference: true; scope: Environment; name: string; value: VariableValue };
+export type Variable = VariableValue | VariableReference;
 
 let envCounter = 0;
 export class Environment {
 	public id: number;
 	private parent: Environment | undefined;
-	public variables: Map<string, Variable> = new Map();
+	public variables: Map<string, EnvVariable> = new Map();
 	private functions: Map<string, AST.FunctionDeclaration> = new Map();
 	public orderedVariableNames: string[] = [];
 
@@ -38,22 +38,22 @@ export class Environment {
 	/**
 	 * 为已存在的变量赋值。
 	 */
-	public assign(name: string, value: any, kind: AST.AssignmentKind) {
+	public assign(name: string, value: Variable, kind: AST.AssignmentKind): VariableValue {
 		const executionScope = this;
 
 		// 如果赋值操作是 'Move'，需要标记源变量为 "已移动"
-		if (kind === AssignmentKind.MOVE && value?.isVariableReference) value.scope.variables.get(value.name)!.moved = true;
+		if (kind === AssignmentKind.MOVE && isVariableReference(value)) value.scope.variables.get(value.name)!.moved = true;
 
 		// 查找并追踪目标的最终存放位置
 		const initialTargetScope = executionScope.findVariableScope(name);
-		if (!initialTargetScope) throw new Error(`你想修改的变量「${name}」还不认识喵！请先用“蹭”一下喵。`);
+		if (!initialTargetScope) throw new Error(`你想修改的变量「${name}」还不认识喵！请先“蹭”一下喵。`);
 
 		let finalTargetScope = initialTargetScope;
 		let finalTargetName = name;
 		let targetVar = finalTargetScope.variables.get(finalTargetName);
 
 		// 顺着引用链一直往下找，找到真正的“碗”
-		while (targetVar?.value?.isReference) {
+		while (targetVar && isReferenceLink(targetVar.value)) {
 			finalTargetScope = targetVar.value.scope;
 			finalTargetName = targetVar.value.name;
 			targetVar = finalTargetScope.variables.get(finalTargetName);
@@ -67,7 +67,7 @@ export class Environment {
 			finalValue
 		);
 		if (kind === AssignmentKind.REFERENCE) {
-			if (value?.isVariableReference) {
+			if (isVariableReference(value)) {
 				finalTargetScope.variables.set(finalTargetName, {
 					value: { isReference: true, scope: value.scope, name: value.name },
 					moved: false,
@@ -92,7 +92,7 @@ export class Environment {
 		this.orderedVariableNames.push(name); // 确保引用也被添加到有序列表中
 	}
 
-	public lookup(name: string | number, _originalName?: string): VariableReference {
+	public lookup(name: string | number, _originalName?: string): VariableReference & { value: MeaoiuValue } {
 		let resolvedName = '';
 
 		// 1. 解析当前要查找的名字
@@ -125,20 +125,18 @@ export class Environment {
 		logger.debug(`[ENV #${this.id}] LOOKUP: '${resolvedName}'. Found in Env #${scope.id}.`);
 
 		// 5. 递归查找（继续传递 originalName）
-		if (variable.value?.isReference) return variable.value.scope.lookup(variable.value.name, originalName);
+		if (isReferenceLink(variable.value)) return variable.value.scope.lookup(variable.value.name, originalName);
 
 		return { isVariableReference: true, scope: scope, name: resolvedName, value: variable.value };
 	}
 
 	public findVariableScope(name: string): Environment | undefined {
-		if (this.variables.has(name)) return this;
-		if (this.parent) return this.parent.findVariableScope(name);
-		return undefined;
+		return this.variables.has(name) ? this : this.parent?.findVariableScope(name);
 	}
 
-	public resolveValue(value: unknown): any {
-		if ((value as VariableReference)?.isVariableReference) return (value as VariableReference).value;
-		return value;
+	public resolveValue(value: Variable): MeaoiuValue {
+		const variableValue = isVariableReference(value) ? value.value : value;
+		return isReferenceLink(variableValue) ? variableValue.scope.resolveValue(variableValue) : variableValue;
 	}
 
 	public declareFunction(name: string, func: AST.FunctionDeclaration): void {
@@ -146,8 +144,7 @@ export class Environment {
 	}
 
 	public lookupFunction(name: string): AST.FunctionDeclaration | undefined {
-		if (this.functions.has(name)) return this.functions.get(name);
-		return this.parent?.lookupFunction(name);
+		return this.functions.get(name) ?? this.parent?.lookupFunction(name);
 	}
 
 	public createShallowCopy(): Environment {
@@ -217,4 +214,12 @@ export class Environment {
 		}
 		return false;
 	}
+}
+
+function isReferenceLink(value: VariableValue): value is ReferenceLink {
+	return !!(value as ReferenceLink | null)?.isReference;
+}
+
+function isVariableReference(value: Variable): value is VariableReference {
+	return !!(value as VariableReference | null)?.isVariableReference;
 }

@@ -6,7 +6,7 @@ import { findReferences } from '../../api/services/references.js';
 import { ServiceState } from '../../api/serviceState.js';
 import { parsePosition } from './toolUtils.js';
 
-export function definition(sourceCode: string, posRaw: string, filePath: string) {
+export function definition(sourceCode: string, filePath: string, posRaw?: string) {
 	const pos = parsePosition(posRaw);
 
 	const definitionInfo = findDefinition(new ServiceState(0, sourceCode), pos);
@@ -18,7 +18,7 @@ export function definition(sourceCode: string, posRaw: string, filePath: string)
 	console.log(`[定义查找] 找不到 '${posRaw}' 位置符号的定义。`);
 }
 
-export function references(sourceCode: string, posRaw: string, filePath: string) {
+export function references(sourceCode: string, filePath: string, posRaw?: string) {
 	const pos = parsePosition(posRaw);
 
 	const references = findReferences(new ServiceState(0, sourceCode), pos);
@@ -30,7 +30,7 @@ export function references(sourceCode: string, posRaw: string, filePath: string)
 	console.log(`[引用查找] 找不到 '${posRaw}' 位置符号的引用。`);
 }
 
-export function hover(sourceCode: string, posRaw: string) {
+export function hover(sourceCode: string, posRaw?: string) {
 	const pos = parsePosition(posRaw);
 
 	const hoverInfo = getHoverInfo(new ServiceState(0, sourceCode), pos);
