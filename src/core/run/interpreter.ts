@@ -5,23 +5,23 @@ import { AssignmentKind, LogicalOperator, NodeType } from '../ast.js';
 import { type BuiltInFunctions, isBuiltInFunctionName } from '../builtIns.js';
 import { MeaoiuError, errorFrom } from '../error.js';
 import { checkArithmeticOperation, checkComparisonOperation, getMeaoiuType, MeaoiuType, typeNames } from '../typedef.js';
-import { Environment, type Variable } from './environment.js';
+import { Environment, type VariableValue } from './environment.js';
 import logger from './logger.js';
 
 const BREAK_SIGNAL = { type: 'BREAK_SIGNAL' } as const; // '累了~'
 const CONTINUE_SIGNAL = { type: 'CONTINUE_SIGNAL' } as const; //'偷袭~'
 class ReturnValue {
-	constructor(public value: Variable) {}
+	constructor(public value: VariableValue) {}
 } // '叼回来 [值]~'
 class LoopValue {
-	constructor(public value: Variable) {}
+	constructor(public value: VariableValue) {}
 } // '偷袭 <值>~'
 
 const ReturnOrAmbush: Record<
 	(AST.ReturnStatement | AST.AmbushStatement)['type'],
 	{
 		emptySignal: ReturnValue | typeof CONTINUE_SIGNAL;
-		valueHandler: (value: Variable) => unknown;
+		valueHandler: (value: VariableValue) => unknown;
 	}
 > = {
 	[NodeType.ReturnStatement]: {
@@ -105,7 +105,7 @@ export async function evaluate(
 				if (isCollection) return blockEnv; // 返回纸箱的环境
 				if (newEnvType !== NewEnvType.normal) return null; // 非普通块只靠信号返回
 
-				if (lastEvaluated?.isVariableReference) {
+				if (lastEvaluated?.isReference) {
 					const varRef = lastEvaluated;
 					const sourceScope: Environment = varRef.scope;
 
@@ -342,7 +342,7 @@ export async function evaluate(
 				}
 				// 目标是 a 这种普通变量
 				const target = await evaluate(assignStmt.assignee, env, builtIns, boundaryEnv);
-				if (!target?.isVariableReference) {
+				if (!target?.isReference) {
 					throw errorFrom(assignStmt.assignee, `运行错误喵: 赋值的左边必须是一个碗喵！`);
 				}
 				return target.scope.assign(target.name, value, assignStmt.kind);
@@ -475,7 +475,7 @@ export async function evaluate(
 					case AssignmentKind.COPY: // 高仿
 						return argumentValue instanceof Environment ? argumentValue.createShallowCopy() : argumentValue;
 					case AssignmentKind.MOVE: // 抢走
-						if (!argumentRef?.isVariableReference) {
+						if (!argumentRef?.isReference) {
 							throw errorFrom(argument, `运行错误喵: 只能抢走碗里的东西喵！`);
 						}
 						// 标记源头为已移动
