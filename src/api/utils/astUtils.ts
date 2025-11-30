@@ -46,7 +46,7 @@ export function findIdentifierAt(ast: AST.Node, line: number, col: number): AST.
 }
 
 export function buildParentMap(node: AST.Node) {
-	const parentMap = new Map<AST.Node, AST.Node>();
+	const parentMap = new WeakMap<AST.Node, AST.Node>();
 	function build(node: AST.Node, parent?: AST.Node) {
 		if (parent) parentMap.set(node, parent);
 

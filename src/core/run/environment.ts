@@ -4,10 +4,7 @@ import type * as AST from '../ast.js';
 import { AssignmentKind } from '../ast.js';
 import logger from '../run/logger.js';
 import type { MeaoiuValue } from '../typedef.js';
-
-type ReferenceLink = { isReference: true; scope: Environment; name: string };
-export type VariableValue = ReferenceLink | MeaoiuValue;
-type EnvVariable = { value: VariableValue; moved: boolean };
+import { isReferenceLink, isSignal, type Evaluated, type ReferenceLink, type EnvVariable } from './value.js';
 
 let envCounter = 0;
 export class Environment {
@@ -20,15 +17,15 @@ export class Environment {
 	constructor(parent?: Environment) {
 		this.parent = parent;
 		this.id = envCounter++;
-		logger.debug(`[ENV] Created Environment #${this.id} (parent: ${this.parent?.id ?? 'none'})`);
+		logger.debug(`[ENV] 新建环境 #${this.id} (上级: ${this.parent?.id ?? '无'})`);
 	}
 
 	/**
 	 * 声明新变量（不包含赋值）。
 	 */
 	public declare(name: string): void {
-		if (this.variables.has(name)) throw new Error(`变量 '${name}' 已经被“蹭”过一次了喵！`);
-		logger.debug(`[ENV #${this.id}] DECLARE: '${name}'`);
+		if (this.variables.has(name)) throw new Error(`变量「${name}」已经被“蹭”过一次了喵！`);
+		logger.debug(`[ENV #${this.id}] 声明: 变量「${name}」`);
 		this.variables.set(name, { value: null, moved: false });
 		this.orderedVariableNames.push(name);
 	}
@@ -36,7 +33,7 @@ export class Environment {
 	/**
 	 * 为已存在的变量赋值。
 	 */
-	public assign(name: string, value: VariableValue, kind: AST.AssignmentKind): VariableValue {
+	public assign(name: string, value: Evaluated, kind: AST.AssignmentKind): MeaoiuValue {
 		const executionScope = this;
 
 		// 如果赋值操作是 'Move'，需要标记源变量为 "已移动"
@@ -44,7 +41,7 @@ export class Environment {
 
 		// 查找并追踪目标的最终存放位置
 		const initialTargetScope = executionScope.findVariableScope(name);
-		if (!initialTargetScope) throw new Error(`你想修改的变量「${name}」还不认识喵！请先“蹭”一下喵。`);
+		if (!initialTargetScope) throw new Error(`还不认识「${name}」喵！要先“蹭”一下喵！`);
 
 		let finalTargetScope = initialTargetScope;
 		let finalTargetName = name;
@@ -59,11 +56,11 @@ export class Environment {
 
 		// 在当前执行作用域解析源头最终值
 		let finalValue = executionScope.resolveValue(value);
-		// 在最终位置赋值
 		logger.debug(
-			`[ENV #${executionScope.id}] ASSIGN: '${finalTargetName}' in Env #${finalTargetScope.id}. (kind: ${kind}) VALUE:`,
+			`[ENV #${executionScope.id}] 赋值: 环境 #${finalTargetScope.id} 中的「${finalTargetName}」被赋予 (方式: ${kind}) 值:`,
 			finalValue
 		);
+		// 在最终位置赋值
 		if (kind === AssignmentKind.REFERENCE) {
 			if (isReferenceLink(value)) {
 				finalTargetScope.variables.set(finalTargetName, { value, moved: false });
@@ -83,7 +80,7 @@ export class Environment {
 
 		// 1. 解析当前要查找的名字
 		if (typeof name === 'number') {
-			if (name < 1 || name > this.orderedVariableNames.length) throw new Error(`喵呜！找不到索引为 ${name} 的玩具喵！`);
+			if (name < 1 || name > this.orderedVariableNames.length) throw new Error(`喵呜！找不到「${name}」号玩具喵！`);
 			resolvedName = this.orderedVariableNames[name - 1]!;
 		} else {
 			resolvedName = name;
@@ -106,21 +103,22 @@ export class Environment {
 					: `碰不到「${originalName}」，因为它的本体「${resolvedName}」被拿走了喵！`; // 起终点不一致，报告起终点
 			throw new Error(`喵呜！${errorMessage}`);
 		}
-		logger.debug(`[ENV #${this.id}] LOOKUP: '${resolvedName}'. Found in Env #${scope.id}.`);
+		logger.debug(`[ENV #${this.id}] 查找: 在环境 #${scope.id} 中找到「${resolvedName}」`);
 
 		// 5. 递归查找（继续传递 originalName）
 		if (isReferenceLink(value)) return value.scope.lookup(value.name, originalName);
 
-		return { isReference: true, scope: scope, name: resolvedName };
+		return { isReference: true, scope, name: resolvedName };
 	}
 
 	public findVariableScope(name: string): Environment | undefined {
 		return this.variables.has(name) ? this : this.parent?.findVariableScope(name);
 	}
 
-	public resolveValue(value: VariableValue): MeaoiuValue {
-		const variableValue = isReferenceLink(value) ? value.scope.variables.get(value.name)!.value : value;
-		return isReferenceLink(variableValue) ? variableValue.scope.resolveValue(variableValue) : variableValue;
+	public resolveValue(value: Evaluated): MeaoiuValue {
+		if (isSignal(value)) throw new Error(`不能在这里发送神秘信号喵！`);
+		while (isReferenceLink(value)) value = value.scope.variables.get(value.name)!.value;
+		return value;
 	}
 
 	public declareFunction(name: string, func: AST.FunctionDeclaration): void {
@@ -132,7 +130,7 @@ export class Environment {
 	}
 
 	public declareReference(name: string, targetScope: Environment, targetName: string): void {
-		if (this.variables.has(name)) throw new Error(`变量 '${name}' 已经被“蹭”过一次了喵！`);
+		if (this.variables.has(name)) throw new Error(`已经“蹭”过一次「${name}」了喵！`);
 		this.variables.set(name, {
 			value: { isReference: true, scope: targetScope, name: targetName },
 			moved: false,
@@ -207,8 +205,4 @@ export class Environment {
 		}
 		return false;
 	}
-}
-
-function isReferenceLink(value: VariableValue): value is ReferenceLink {
-	return !!(value as ReferenceLink | null)?.isReference;
 }

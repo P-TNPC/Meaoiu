@@ -725,7 +725,7 @@ export class Parser {
 				right: r,
 				line: s.line,
 				col: s.col,
-				...this.endLoc(),
+				...this.endLoc(s),
 			};
 		}
 		return l;
@@ -745,7 +745,7 @@ export class Parser {
 				right: r,
 				line: s.line,
 				col: s.col,
-				...this.endLoc(),
+				...this.endLoc(s),
 			};
 		}
 		return l;
