@@ -3,8 +3,15 @@
 import type * as AST from '../ast.js';
 import { AssignmentKind } from '../ast.js';
 import logger from '../run/logger.js';
-import type { MeaoiuValue } from '../typedef.js';
-import { isReferenceLink, isSignal, type Evaluated, type ReferenceLink, type EnvVariable } from './value.js';
+import { MeaoiuType, typeNames, type MeaoiuValue } from '../typedef.js';
+import {
+	isReferenceLink,
+	isSignal,
+	type Evaluated,
+	type ReferenceLink,
+	type EnvVariable,
+	type VariableValue,
+} from './value.js';
 
 let envCounter = 0;
 export class Environment {
@@ -33,10 +40,10 @@ export class Environment {
 	/**
 	 * 为已存在的变量赋值。
 	 */
-	public assign(name: string, value: Evaluated, kind: AST.AssignmentKind): MeaoiuValue {
+	public assign(name: string, value: Evaluated, kind: AST.AssignmentKind): ReferenceLink {
 		const executionScope = this;
 
-		// 如果赋值操作是 'Move'，需要标记源变量为 "已移动"
+		// 如果移动一个引用，需要标记源变量为「已移动」
 		if (kind === AssignmentKind.MOVE && isReferenceLink(value)) value.scope.variables.get(value.name)!.moved = true;
 
 		// 查找并追踪目标的最终存放位置
@@ -47,32 +54,30 @@ export class Environment {
 		let finalTargetName = name;
 		let targetVar = finalTargetScope.variables.get(finalTargetName);
 
-		// 顺着引用链一直往下找，找到真正的“碗”
+		// 顺着引用链一直往下找，找到真正的「碗」
 		while (targetVar && isReferenceLink(targetVar.value)) {
 			finalTargetScope = targetVar.value.scope;
 			finalTargetName = targetVar.value.name;
 			targetVar = finalTargetScope.variables.get(finalTargetName);
 		}
 
-		// 在当前执行作用域解析源头最终值
-		let finalValue = executionScope.resolveValue(value);
+		// 在最终位置赋值
+		let finalValue: VariableValue;
+		if (kind === AssignmentKind.REFERENCE) {
+			finalValue = isReferenceLink(value) ? value : executionScope.resolveValue(value);
+		} else {
+			finalValue = executionScope.resolveValue(value);
+			if (kind === AssignmentKind.COPY && finalValue instanceof Environment) {
+				finalValue = finalValue.createShallowCopy(); // 复制一个纸箱，实际上是创建一个「视图」
+			}
+		}
+		finalTargetScope.variables.set(finalTargetName, { value: finalValue, moved: false });
 		logger.debug(
 			`[ENV #${executionScope.id}] 赋值: 环境 #${finalTargetScope.id} 中的「${finalTargetName}」被赋予 (方式: ${kind}) 值:`,
 			finalValue
 		);
-		// 在最终位置赋值
-		if (kind === AssignmentKind.REFERENCE) {
-			if (isReferenceLink(value)) {
-				finalTargetScope.variables.set(finalTargetName, { value, moved: false });
-				return finalValue;
-			}
-		} else if (kind === AssignmentKind.COPY && finalValue instanceof Environment) {
-			// 复制一个纸箱，实际上是创建一个“视图”
-			finalValue = finalValue.createShallowCopy();
-		}
-		finalTargetScope.variables.set(finalTargetName, { value: finalValue, moved: false });
 
-		return finalValue;
+		return { isReference: true, scope: finalTargetScope, name: finalTargetName };
 	}
 
 	public lookup(name: string | number, _originalName?: string): ReferenceLink {
@@ -86,16 +91,21 @@ export class Environment {
 			resolvedName = name;
 		}
 
-		// 2. 确定“源头”名字
-		// 如果 _originalName 未定义, 说明这是查询的第一环, “源头”就是刚解析出的名字
+		// 2. 确定「源头」名字
+		// 如果 _originalName 未定义, 说明这是查询的第一环,「源头」就是刚解析出的名字
 		const originalName = _originalName ?? resolvedName;
 
 		// 3. 查找符号
 		const scope = this.findVariableScope(resolvedName);
-		if (!scope) throw new Error(`咦？没找到叫做「${resolvedName}」的玩具，是不是被你藏起来了喵？`);
+		if (!scope) {
+			const errorMessage = this.findFunction(resolvedName)
+				? `是不是想把${typeNames[MeaoiuType.FUNCTION]}「${resolvedName}」当成玩具喵？`
+				: `没找到叫做「${resolvedName}」的玩具，是不是被你藏起来了喵？`;
+			throw new Error(`咦？${errorMessage}`);
+		}
 		const { value, moved } = scope.variables.get(resolvedName)!;
 
-		// 4. 检查“已移动”状态
+		// 4. 检查「已移动」状态
 		if (moved) {
 			const errorMessage =
 				originalName === resolvedName
@@ -111,7 +121,7 @@ export class Environment {
 		return { isReference: true, scope, name: resolvedName };
 	}
 
-	public findVariableScope(name: string): Environment | undefined {
+	private findVariableScope(name: string): Environment | undefined {
 		return this.variables.has(name) ? this : this.parent?.findVariableScope(name);
 	}
 
@@ -125,8 +135,8 @@ export class Environment {
 		this.functions.set(name, func);
 	}
 
-	public lookupFunction(name: string): AST.FunctionDeclaration | undefined {
-		return this.functions.get(name) ?? this.parent?.lookupFunction(name);
+	public findFunction(name: string): AST.FunctionDeclaration | undefined {
+		return this.functions.get(name) ?? this.parent?.findFunction(name);
 	}
 
 	public declareReference(name: string, targetScope: Environment, targetName: string): void {
@@ -148,7 +158,7 @@ export class Environment {
 	}
 
 	/**
-	 * 创建一个“合并视图”。
+	 * 创建一个「合并视图」。
 	 * 将创建一个新纸箱，该纸箱按顺序包含来自 A (this) 和 B (other) 的所有引用。
 	 * 自动生成的键（}auto_{）会被重命名以保证顺序。
 	 * 用户定义的键如果冲突，A 优先。
@@ -194,7 +204,7 @@ export class Environment {
 	}
 
 	/**
-	 * 检查当前环境是否严格位于 ancestor 的“内部”。
+	 * 检查当前环境是否严格位于 ancestor 的「内部」。
 	 */
 	public isInsideOf(ancestor: Environment | undefined): boolean {
 		if (!ancestor) return false;

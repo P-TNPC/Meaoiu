@@ -49,19 +49,19 @@ export function getMeaoiuType(v: unknown): MeaoiuType {
  */
 export function checkArithmeticOperation(op: string, leftType: MeaoiuType, rightType: MeaoiuType): string | undefined {
 	if (leftType !== rightType) {
-		return `'${op}' 操作符只能给同类用喵! ${typeNames[leftType]} 和 ${typeNames[rightType]} 不可以喵!`;
+		return `「${op}」操作符只能给同类用喵！「${typeNames[leftType]}」和「${typeNames[rightType]}」不可以喵！`;
 	}
 
 	if (leftType === MeaoiuType.NUMBER) return undefined; // 数字可以做任何运算
 
 	if (['-', '*', '/'].includes(op)) {
-		return `'${op}' 操作符只能用于两个 ${typeNames[MeaoiuType.NUMBER]} 之间喵!`;
+		return `「${op}」操作符只能用于两个「${typeNames[MeaoiuType.NUMBER]}」之间喵！`;
 	}
 
 	if (op === '+' && leftType !== MeaoiuType.STRING && leftType !== MeaoiuType.COLLECTION) {
-		return `'${op}' 操作符只能用在 ${typeNames[MeaoiuType.NUMBER]}、${typeNames[MeaoiuType.STRING]} 或 ${
+		return `「${op}」操作符只能用在「${typeNames[MeaoiuType.NUMBER]}」、「${typeNames[MeaoiuType.STRING]}」或「${
 			typeNames[MeaoiuType.COLLECTION]
-		} 上喵!`;
+		}」上喵！`;
 	}
 
 	return undefined; // 合法
@@ -77,12 +77,12 @@ export function checkComparisonOperation(op: string, leftType: MeaoiuType, right
 
 	// 其他比较符必须同类
 	if (leftType !== rightType) {
-		return `'${op}' 操作符只能给同类用喵! ${typeNames[leftType]} 和 ${typeNames[rightType]} 不可以喵!`;
+		return `「${op}」操作符只能给同类用喵！「${typeNames[leftType]}」和「${typeNames[rightType]}」不可以喵！`;
 	}
 
 	// 且只能是数字或字符串
 	if (leftType !== MeaoiuType.NUMBER && leftType !== MeaoiuType.STRING) {
-		return `'${op}' 操作符只能用在 ${typeNames[MeaoiuType.NUMBER]} 或 ${typeNames[MeaoiuType.STRING]} 上喵!`;
+		return `「${op}」操作符只能用在「${typeNames[MeaoiuType.NUMBER]}」或「${typeNames[MeaoiuType.STRING]}」上喵！`;
 	}
 
 	return undefined; // 合法

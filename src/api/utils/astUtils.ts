@@ -11,25 +11,18 @@ export function isNodeArray(array: AST.Node[] | Token[]): array is AST.Node[] {
 /**
  * 在 AST 中，根据给定的行和列，查找对应的标识符节点
  * @param ast 要遍历的 AST 根节点
- * @param line 行号 (1-based)
- * @param col 列号 (1-based)
+ * @param line 行号
+ * @param col 列号
  */
 export function findIdentifierAt(ast: AST.Node, line: number, col: number): AST.Identifier | undefined {
 	let found: AST.Identifier | undefined;
 
 	function walk(node: AST.Node) {
-		if (!node || found) return;
+		if (found) return;
 
-		if (node.type === NodeType.Identifier) {
-			const idNode = node;
-			const startCol = idNode.col;
-			// 范围是左闭右开的，例如 col 6 覆盖了 'a'，但 col 7 就不在 'a' 上了
-			const endCol = startCol + idNode.symbol.length;
-
-			if (idNode.line === line && startCol <= col && col < endCol) {
-				found = idNode;
-				return;
-			}
+		if (node.type === NodeType.Identifier && node.line === line && node.col <= col && col < node.endCol) {
+			found = node;
+			return;
 		}
 
 		// 递归遍历所有子节点

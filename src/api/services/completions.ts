@@ -7,22 +7,21 @@ import { SymbolKind, type Scope } from '../utils/symbolTable.js';
 
 // 找到指定位置所在的最小作用域
 function findScopeAt(position: { line: number; col: number }, nodeScopeMap: Map<AST.Node, Scope>): Scope | undefined {
+	const { line: targetLine, col: targetCol } = position;
 	let bestFitNode: AST.Node | undefined;
 
 	for (const node of nodeScopeMap.keys()) {
-		const isInside =
-			(position.line > node.line || (position.line === node.line && position.col >= node.col)) &&
-			(position.line < node.endLine || (position.line === node.endLine && position.col <= node.endCol));
-		if (!isInside) continue;
-
-		if (
-			!bestFitNode ||
-			(node.line >= bestFitNode.line &&
-				node.endLine <= bestFitNode.endLine &&
-				node.endCol - node.col <= bestFitNode.endCol - bestFitNode.col)
-		) {
-			bestFitNode = node;
-		}
+		const isOutsideOrOutter =
+			targetLine < node.line ||
+			targetLine > node.endLine ||
+			(targetLine === node.line && targetCol < node.col) ||
+			(targetLine === node.endLine && targetCol > node.endCol) ||
+			(bestFitNode &&
+				(node.line < bestFitNode.line ||
+					node.endLine > bestFitNode.endLine ||
+					(node.line === bestFitNode.line && node.col < bestFitNode.col) ||
+					(node.endLine === bestFitNode.endLine && node.endCol > bestFitNode.endCol)));
+		if (!isOutsideOrOutter) bestFitNode = node;
 	}
 	return bestFitNode ? nodeScopeMap.get(bestFitNode) : undefined;
 }

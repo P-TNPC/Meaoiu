@@ -65,11 +65,10 @@ export async function evaluate(
 				if (isCollection) {
 					let autoIndexCounter = 0; // 自动索引计数器
 					for (const stmt of body) {
-						if (stmt.type === NodeType.VariableDeclaration) {
-							// 处理带 `蹭` 或隐式的 `a 就是 1`
-							await evaluate(stmt, blockEnv, builtIns, boundaryEnv);
-						} else if (stmt.type === NodeType.ExpressionStatement) {
-							// 处理纯表达式，调用辅助函数
+						// 处理带 `蹭` 或隐式的 `a 就是 1`
+						if (stmt.type === NodeType.VariableDeclaration) await evaluate(stmt, blockEnv, builtIns, boundaryEnv);
+						// 调用辅助函数处理纯表达式
+						else if (stmt.type === NodeType.ExpressionStatement) {
 							autoIndexCounter = await _evaluateCollectionElement(
 								stmt,
 								blockEnv,
@@ -339,8 +338,8 @@ export async function evaluate(
 						NewEnvType.LOOP
 					);
 
-					if (result === BREAK_SIGNAL) break; // '累了~' -> 退出循环
 					if (result === CONTINUE_SIGNAL) continue; // '偷袭~' -> 继续下次循环
+					if (result === BREAK_SIGNAL) break; // '累了~' -> 退出循环
 					if (result instanceof LoopValue) return result.value; // '偷袭 <值>~' -> 退出并返回值
 					if (result instanceof ReturnValue) return result; // '叼回来 [值]~' -> 退出函数
 					// break; // 让循环变懒
@@ -391,20 +390,18 @@ export async function evaluate(
 					return builtIns[funcName](evalArgs);
 				}
 
-				const func = env.lookupFunction(funcName);
+				const func = env.findFunction(funcName);
 				if (!func) {
 					throw errorFrom(node.callee, `运行错误喵: 没有叫「${funcName}」的${typeNames[MeaoiuType.FUNCTION]}喵！`);
 				}
 
-				const functionEnv = new Environment(env);
-
 				// 从函数定义的参数块中，按顺序提取出参数的名字
 				const paramNames = func.params.body
 					.map(stmt => {
+						if (stmt.type === NodeType.VariableDeclaration) return stmt.identifier.symbol;
 						if (stmt.type === NodeType.ExpressionStatement && stmt.expression.type === NodeType.Identifier) {
 							return stmt.expression.symbol;
 						}
-						if (stmt.type === NodeType.VariableDeclaration) return stmt.identifier.symbol;
 						throw errorFrom(stmt, `运行错误喵: 贡品不能是奇怪的样子 ${stmt.type} 喵！`);
 					})
 					.filter(Boolean);
@@ -415,6 +412,8 @@ export async function evaluate(
 						`运行错误喵: 要 ${paramNames.length} 个贡品，只给 ${argsCollection.orderedVariableNames.length} 个不够喵！`
 					);
 				}
+
+				const functionEnv = new Environment(env);
 
 				// 按顺序将参数纸箱里的变量“嫁接”到函数内部作用域
 				for (let i = 0; i < paramNames.length; i++) {

@@ -1,6 +1,5 @@
 // src/core/run/types.ts
 
-import { NodeType } from '../ast.js';
 import type { MeaoiuValue } from '../typedef.js';
 import type { Environment } from './environment.js';
 
@@ -8,8 +7,8 @@ export type ReferenceLink = { isReference: true; scope: Environment; name: strin
 export type VariableValue = ReferenceLink | MeaoiuValue;
 export type EnvVariable = { value: VariableValue; moved: boolean }; // 仅用于环境内部储存，不传递喵
 
-export const BREAK_SIGNAL = { type: NodeType.BreakStatement } as const; // '累了~'
-export const CONTINUE_SIGNAL = { type: NodeType.AmbushStatement } as const; //'偷袭~'
+export const BREAK_SIGNAL = Symbol(); // '累了~'
+export const CONTINUE_SIGNAL = Symbol(); //'偷袭~'
 // 可套娃的带值信号，将未实现的想法上交喵（动作 [#动作~#]~）
 export class ReturnValue {
 	constructor(public value: Evaluated) {}
@@ -26,5 +25,5 @@ export function isReferenceLink(value: Evaluated): value is ReferenceLink {
 }
 
 export function isSignal(value: Evaluated): value is Signal {
-	return value instanceof ReturnValue || value === BREAK_SIGNAL || value instanceof LoopValue || value === CONTINUE_SIGNAL;
+	return value === CONTINUE_SIGNAL || value instanceof ReturnValue || value === BREAK_SIGNAL || value instanceof LoopValue;
 }
