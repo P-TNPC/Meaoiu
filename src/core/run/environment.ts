@@ -13,6 +13,12 @@ import {
 	type VariableValue,
 } from './value.js';
 
+export function markReferenceMoved(ref: ReferenceLink): void {
+	ref.scope.variables.get(ref.name)!.moved = true;
+}
+
+const isAutoKey = (key: string) => key.startsWith('}_');
+
 let envCounter = 0;
 export class Environment {
 	public id: number;
@@ -43,9 +49,6 @@ export class Environment {
 	public assign(name: string, value: Evaluated, kind: AST.AssignmentKind): ReferenceLink {
 		const executionScope = this;
 
-		// 如果移动一个引用，需要标记源变量为「已移动」
-		if (kind === AssignmentKind.MOVE && isReferenceLink(value)) value.scope.variables.get(value.name)!.moved = true;
-
 		// 查找并追踪目标的最终存放位置
 		const initialTargetScope = executionScope.findVariableScope(name);
 		if (!initialTargetScope) throw new Error(`还不认识「${name}」喵！要先“蹭”一下喵！`);
@@ -67,7 +70,9 @@ export class Environment {
 			finalValue = isReferenceLink(value) ? value : executionScope.resolveValue(value);
 		} else {
 			finalValue = executionScope.resolveValue(value);
-			if (kind === AssignmentKind.COPY && finalValue instanceof Environment) {
+			if (kind === AssignmentKind.MOVE) {
+				if (isReferenceLink(value)) markReferenceMoved(value); // 引用被移动，标记为「已移动」
+			} else if (kind === AssignmentKind.COPY && finalValue instanceof Environment) {
 				finalValue = finalValue.createShallowCopy(); // 复制一个纸箱，实际上是创建一个「视图」
 			}
 		}
@@ -80,7 +85,7 @@ export class Environment {
 		return { isReference: true, scope: finalTargetScope, name: finalTargetName };
 	}
 
-	public lookup(name: string | number, _originalName?: string): ReferenceLink {
+	public lookup(name: string | number, _originalName?: string, checkMoved = true): ReferenceLink {
 		let resolvedName = '';
 
 		// 1. 解析当前要查找的名字
@@ -106,17 +111,18 @@ export class Environment {
 		const { value, moved } = scope.variables.get(resolvedName)!;
 
 		// 4. 检查「已移动」状态
-		if (moved) {
-			const errorMessage =
-				originalName === resolvedName
-					? `藏在「${originalName}」里的东西被拿走了，现在是只空碗喵！`
-					: `碰不到「${originalName}」，因为它的本体「${resolvedName}」被拿走了喵！`; // 起终点不一致，报告起终点
+		if (moved && checkMoved) {
+			const errorMessage = isAutoKey(originalName)
+				? `纸箱里的「${this.orderedVariableNames.indexOf(originalName) + 1}」号玩具不见了，一定是被谁拿走了喵！`
+				: originalName === resolvedName
+				? `藏在「${originalName}」里的东西被拿走了，现在是只空碗喵！`
+				: `碰不到「${originalName}」，因为它的本体「${resolvedName}」被拿走了喵！`; // 起终点不一致，报告起终点
 			throw new Error(`喵呜！${errorMessage}`);
 		}
 		logger.debug(`[ENV #${this.id}] 查找: 在环境 #${scope.id} 中找到「${resolvedName}」`);
 
 		// 5. 递归查找（继续传递 originalName）
-		if (isReferenceLink(value)) return value.scope.lookup(value.name, originalName);
+		if (isReferenceLink(value)) return value.scope.lookup(value.name, originalName, checkMoved);
 
 		return { isReference: true, scope, name: resolvedName };
 	}
@@ -151,7 +157,7 @@ export class Environment {
 	public createShallowCopy(): Environment {
 		const newEnv = new Environment(this.parent);
 		for (const varName of this.orderedVariableNames) {
-			const originalVarRef = this.lookup(varName);
+			const originalVarRef = this.lookup(varName, undefined, false);
 			newEnv.declareReference(varName, originalVarRef.scope, originalVarRef.name);
 		}
 		return newEnv;
@@ -160,7 +166,7 @@ export class Environment {
 	/**
 	 * 创建一个「合并视图」。
 	 * 将创建一个新纸箱，该纸箱按顺序包含来自 A (this) 和 B (other) 的所有引用。
-	 * 自动生成的键（}auto_{）会被重命名以保证顺序。
+	 * 自动生成的键（}_{）会被重命名以保证顺序。
 	 * 用户定义的键如果冲突，A 优先。
 	 */
 	public createMergedView(other: Environment): Environment {
@@ -168,15 +174,13 @@ export class Environment {
 		const addedKeys = new Set<string>();
 		let autoIndexCounter = 0; // 为新视图创建全新的自动索引
 
-		const isAutoKey = (key: string) => key.startsWith('}auto_');
-
 		// 1. 添加来自 A (this) 的所有引用
 		for (const varName of this.orderedVariableNames) {
-			const originalVarRef = this.lookup(varName);
+			const originalVarRef = this.lookup(varName, undefined, false);
 
 			if (isAutoKey(varName)) {
 				// 重命名自动键
-				const newAutoKey = `}auto_${autoIndexCounter++}{`;
+				const newAutoKey = `}_${autoIndexCounter++}{`;
 				newEnv.declareReference(newAutoKey, originalVarRef.scope, originalVarRef.name);
 			} else {
 				// 添加用户定义的键
@@ -187,11 +191,11 @@ export class Environment {
 
 		// 2. 添加来自 B (other) 的引用
 		for (const varName of other.orderedVariableNames) {
-			const originalVarRef = other.lookup(varName);
+			const originalVarRef = other.lookup(varName, undefined, false);
 
 			if (isAutoKey(varName)) {
 				// 总是添加并重命名自动键
-				const newAutoKey = `}auto_${autoIndexCounter++}{`;
+				const newAutoKey = `}_${autoIndexCounter++}{`;
 				newEnv.declareReference(newAutoKey, originalVarRef.scope, originalVarRef.name);
 			} else if (!addedKeys.has(varName)) {
 				// 用户定义的键，检查冲突
@@ -214,5 +218,11 @@ export class Environment {
 			current = current.parent;
 		}
 		return false;
+	}
+
+	public toString(): string {
+		return `[= ${this.orderedVariableNames
+			.map((name, index) => (isAutoKey(name) ? `(${index + 1})` : `{${name}}`))
+			.join(', ')} =]`;
 	}
 }

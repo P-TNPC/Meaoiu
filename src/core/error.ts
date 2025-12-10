@@ -31,7 +31,7 @@ export class MeaoiuError {
 export function errorFrom(ele: AST.Node | Token, message: string): MeaoiuError {
 	return new MeaoiuError({
 		message,
-		...('endLine' in ele ? ele : { ...ele, endLine: ele.line, endCol: ele.col + ele.value.length }),
+		...('endLine' in ele ? ele : { ...ele, endLine: ele.line, endCol: ele.col + (ele.value.length || 1) }),
 	}); // 若来 ErrorNode，自然以 ErrorNode 的 message 覆盖；若是 Token，尾端位置为 Token 末尾
 }
 

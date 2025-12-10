@@ -1,6 +1,6 @@
 {
 	"name": "meaoiu",
-	"version": "0.0.23",
+	"version": "0.0.24",
 	"description": "喵喵喵",
 	"license": "MIT",
 	"author": {
@@ -26,7 +26,7 @@
 		"start": "tsx src/cli/main.ts"
 	},
 	"devDependencies": {
-		"@types/node": "^24.10.1",
+		"@types/node": "^24.10.2",
 		"rimraf": "^6.1.2",
 		"typescript": "^5.9.3"
 	},

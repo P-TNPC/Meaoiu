@@ -9,14 +9,11 @@ export const enum NodeType {
 
 	// 语句
 	VariableDeclaration,
-	FunctionDeclaration,
-	IfStatement,
-	LoopStatement,
-	BreakStatement,
 	AssignmentStatement,
-	BlockStatement,
+	FunctionDeclaration,
 	ReturnStatement,
 	AmbushStatement,
+	BreakStatement,
 	ExpressionStatement,
 
 	// 表达式
@@ -25,6 +22,9 @@ export const enum NodeType {
 	BooleanLiteral,
 	NullLiteral,
 	Identifier,
+	BlockExpression,
+	IfExpression,
+	LoopExpression,
 	ArithmeticExpression,
 	CallExpression,
 	SequenceExpression,
@@ -59,15 +59,11 @@ export interface Program extends AstNode<NodeType.Program> {
 
 export type Statement =
 	| VariableDeclaration
-	| FunctionDeclaration
-	| IfStatement
-	| LoopStatement
-	| BreakStatement
-	| CallExpression
 	| AssignmentStatement
-	| BlockStatement
+	| FunctionDeclaration
 	| ReturnStatement
 	| AmbushStatement
+	| BreakStatement
 	| ExpressionStatement
 	| ErrorNode;
 
@@ -77,16 +73,16 @@ export type Expression =
 	| BooleanLiteral
 	| NullLiteral
 	| Identifier
-	| ArithmeticExpression
-	| ComparisonExpression
+	| BlockExpression
+	| IfExpression
+	| LoopExpression
 	| CallExpression
-	| SequenceExpression
-	| LogicalExpression
-	| BlockStatement
-	| IfStatement
-	| LoopStatement
 	| MemberAccessExpression
 	| UnaryExpression
+	| ArithmeticExpression
+	| ComparisonExpression
+	| SequenceExpression
+	| LogicalExpression
 	| ErrorNode;
 
 export const enum AssignmentKind {
@@ -103,22 +99,6 @@ export const enum LogicalOperator {
 	NOR,
 }
 
-export interface UnaryExpression extends AstNode<NodeType.UnaryExpression> {
-	operator: UnaryOperator;
-	argument: Expression;
-}
-
-export interface LogicalExpression extends AstNode<NodeType.LogicalExpression> {
-	left: Expression;
-	right: Expression;
-	operator: LogicalOperator;
-}
-
-export interface SequenceExpression extends AstNode<NodeType.SequenceExpression> {
-	sections: Expression[];
-	operators: Token[];
-}
-
 export interface VariableDeclaration extends AstNode<NodeType.VariableDeclaration> {
 	identifier: Identifier;
 	initialization?: AssignmentStatement | undefined;
@@ -130,39 +110,14 @@ export interface AssignmentStatement extends AstNode<NodeType.AssignmentStatemen
 	value: Expression;
 }
 
-export interface BlockStatement extends AstNode<NodeType.BlockStatement> {
-	body: Statement[];
-	isCollection?: boolean;
-}
-
-export interface MemberAccessExpression extends AstNode<NodeType.MemberAccessExpression> {
-	object: Expression;
-	property: Expression;
-}
-
-export interface CallExpression extends AstNode<NodeType.CallExpression> {
-	callee: Identifier;
-	args: Expression;
+export interface FunctionDeclaration extends AstNode<NodeType.FunctionDeclaration> {
+	name: Identifier;
+	params: BlockExpression;
+	body: BlockExpression;
 }
 
 export interface ReturnStatement extends AstNode<NodeType.ReturnStatement> {
 	argument?: Expression | undefined;
-}
-
-export interface FunctionDeclaration extends AstNode<NodeType.FunctionDeclaration> {
-	name: Identifier;
-	params: BlockStatement;
-	body: BlockStatement;
-}
-
-export interface IfStatement extends AstNode<NodeType.IfStatement> {
-	test: Expression;
-	consequent: BlockStatement;
-	alternate?: Statement | undefined;
-}
-
-export interface LoopStatement extends AstNode<NodeType.LoopStatement> {
-	body: BlockStatement;
 }
 
 export interface AmbushStatement extends AstNode<NodeType.AmbushStatement> {
@@ -170,7 +125,11 @@ export interface AmbushStatement extends AstNode<NodeType.AmbushStatement> {
 }
 
 export interface BreakStatement extends AstNode<NodeType.BreakStatement> {
-	// type: 'BreakStatement';
+	// 只留名喵
+}
+
+export interface ExpressionStatement extends AstNode<NodeType.ExpressionStatement> {
+	expression: Expression;
 }
 
 export interface NumericLiteral extends AstNode<NodeType.NumericLiteral> {
@@ -193,6 +152,36 @@ export interface Identifier extends AstNode<NodeType.Identifier> {
 	symbol: string;
 }
 
+export interface BlockExpression extends AstNode<NodeType.BlockExpression> {
+	body: Statement[];
+	isCollection: boolean;
+}
+
+export interface IfExpression extends AstNode<NodeType.IfExpression> {
+	test: Expression;
+	consequent: BlockExpression;
+	alternate?: BlockExpression | IfExpression | undefined;
+}
+
+export interface LoopExpression extends AstNode<NodeType.LoopExpression> {
+	body: BlockExpression;
+}
+
+export interface CallExpression extends AstNode<NodeType.CallExpression> {
+	callee: Identifier;
+	args: Expression;
+}
+
+export interface MemberAccessExpression extends AstNode<NodeType.MemberAccessExpression> {
+	object: Expression;
+	property: Expression;
+}
+
+export interface UnaryExpression extends AstNode<NodeType.UnaryExpression> {
+	operator: UnaryOperator;
+	argument: Expression;
+}
+
 export interface ArithmeticExpression extends AstNode<NodeType.ArithmeticExpression> {
 	left: Expression;
 	right: Expression;
@@ -204,6 +193,13 @@ export interface ComparisonExpression extends AstNode<NodeType.ComparisonExpress
 	operators: Token[];
 }
 
-export interface ExpressionStatement extends AstNode<NodeType.ExpressionStatement> {
-	expression: Expression;
+export interface SequenceExpression extends AstNode<NodeType.SequenceExpression> {
+	sections: Expression[];
+	operators: Token[];
+}
+
+export interface LogicalExpression extends AstNode<NodeType.LogicalExpression> {
+	left: Expression;
+	right: Expression;
+	operator: LogicalOperator;
 }

@@ -4,6 +4,8 @@ import { preprocess } from './preprocessor.js';
 import { builtInFunctionNames } from './builtIns.js';
 
 export const enum TokenType {
+	ERROR, //不认识的字符喵
+
 	// 关键字
 	KEYWORD_USE,
 	KEYWORD_IS,
@@ -30,8 +32,8 @@ export const enum TokenType {
 	IDENTIFIER,
 
 	// 符号
-	PARAM_START, // [=
-	PARAM_END, // =]
+	COLLECTION_START, // [=
+	COLLECTION_END, // =]
 	BLOCK_START, // [#
 	BLOCK_END, // #]
 	TERMINATOR, // ~
@@ -182,14 +184,14 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 		const twoCharSymbol = sourceCode.substring(cursor, cursor + 2);
 		if (TWO_CHAR_SYMBOLS.has(twoCharSymbol)) {
 			let type: TokenType = TokenType.OPERATOR;
-			if (twoCharSymbol === '[=') type = TokenType.PARAM_START;
-			else if (twoCharSymbol === '=]') type = TokenType.PARAM_END;
+			if (twoCharSymbol === '[=') type = TokenType.COLLECTION_START;
+			else if (twoCharSymbol === '=]') type = TokenType.COLLECTION_END;
 			else if (twoCharSymbol === '[#') type = TokenType.BLOCK_START;
 			else if (twoCharSymbol === '#]') type = TokenType.BLOCK_END;
 			tokens.push({ type, value: twoCharSymbol, line: startLine, col: startCol });
 			advance(2);
 
-			if (type !== TokenType.PARAM_END) expectingFuncNameAfterParamEnd = false;
+			if (type !== TokenType.COLLECTION_END) expectingFuncNameAfterParamEnd = false;
 			continue;
 		}
 
@@ -280,7 +282,10 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 			continue;
 		}
 
+		// 不认识的字符喵
+		tokens.push({ type: TokenType.ERROR, value: char, line: startLine, col: startCol });
 		console.error('不认识的字符喵:', char);
+
 		advance();
 	}
 

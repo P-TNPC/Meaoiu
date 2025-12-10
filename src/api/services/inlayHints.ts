@@ -43,7 +43,7 @@ function findUltimateSource(symbol: SymbolInfo): SymbolInfo {
 /**
  * 辅助函数：从函数定义的参数块中提取参数名
  */
-function extractParamNames(paramsBlock: AST.BlockStatement): string[] {
+function extractParamNames(paramsBlock: AST.BlockExpression): string[] {
 	const names: string[] = [];
 	for (const paramStmt of paramsBlock.body) {
 		if (paramStmt.type === NodeType.VariableDeclaration) {
@@ -100,7 +100,7 @@ export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 	function walk(node: AST.Node) {
 		if (!node) return;
 
-		if (node.type === NodeType.CallExpression && node.args.type === NodeType.BlockStatement && node.args.isCollection) {
+		if (node.type === NodeType.CallExpression && node.args.type === NodeType.BlockExpression && node.args.isCollection) {
 			const calleeInfo = symbolMap.get(node.callee);
 
 			if (calleeInfo?.kind === SymbolKind.FUNCTION && !calleeInfo.isBuiltIn && calleeInfo.declarations[0]) {

@@ -58,7 +58,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			}
 			return parts.join('\n');
 		}
-		case NodeType.BlockStatement: {
+		case NodeType.BlockExpression: {
 			const n = node;
 			if (n.isCollection) {
 				// 是纸箱 [= ... =]
@@ -107,7 +107,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			content = `${p}扒 ${argsExpr} ${printIdentifier(n.callee)}`;
 			break;
 		}
-		case NodeType.IfStatement: {
+		case NodeType.IfExpression: {
 			const n = node;
 			let r = `${printNodeContent(n.consequent, options)} 好不好? ${printNodeContent(n.test, { ...options, level: 0 })}`;
 			if (n.alternate) r += `\n${indent(options)}不然 ${printNodeContent(n.alternate, options)}`;
@@ -120,7 +120,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			content = `${indent(options)}想要 ${paramsBlock} ${printIdentifier(n.name)} ${printNodeContent(n.body, options)}`;
 			break;
 		}
-		case NodeType.LoopStatement: {
+		case NodeType.LoopExpression: {
 			content = `${indent(options)}玩耍 ${printNodeContent(node.body, options)}`;
 			break;
 		}

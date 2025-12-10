@@ -31,7 +31,7 @@ class SymbolAnalyzer {
 				return MeaoiuType.NULL;
 			case NodeType.Identifier:
 				return this.lookup(node.symbol)?.type ?? MeaoiuType.UNKNOWN;
-			case NodeType.BlockStatement:
+			case NodeType.BlockExpression:
 				return node.isCollection ? MeaoiuType.COLLECTION : MeaoiuType.UNKNOWN;
 			case NodeType.CallExpression: {
 				const func = this.lookup(node.callee.symbol);
@@ -94,19 +94,19 @@ class SymbolAnalyzer {
 		this.nodeScopeMap.set(node, this.currentScope);
 		switch (node.type) {
 			case NodeType.Program:
-			case NodeType.BlockStatement: {
+			case NodeType.BlockExpression: {
 				this.enterScope();
 				node.body.forEach(n => this.visit(n));
 				this.leaveScope();
 				break;
 			}
-			case NodeType.IfStatement: {
+			case NodeType.IfExpression: {
 				this.visit(node.test);
 				this.visit(node.consequent);
 				this.visit(node.alternate);
 				break;
 			}
-			case NodeType.LoopStatement:
+			case NodeType.LoopExpression:
 				this.visit(node.body);
 				break;
 			case NodeType.UnaryExpression:
