@@ -47,29 +47,26 @@ export class Environment {
 	 * 为已存在的变量赋值。
 	 */
 	public assign(name: string, value: Evaluated, kind: AST.AssignmentKind): ReferenceLink {
-		const executionScope = this;
-
 		// 查找并追踪目标的最终存放位置
-		const initialTargetScope = executionScope.findVariableScope(name);
+		const initialTargetScope = this.findVariableScope(name);
 		if (!initialTargetScope) throw new Error(`还不认识「${name}」喵！要先“蹭”一下喵！`);
 
 		let finalTargetScope = initialTargetScope;
 		let finalTargetName = name;
-		let targetVar = finalTargetScope.variables.get(finalTargetName);
 
 		// 顺着引用链一直往下找，找到真正的「碗」
-		while (targetVar && isReferenceLink(targetVar.value)) {
-			finalTargetScope = targetVar.value.scope;
-			finalTargetName = targetVar.value.name;
-			targetVar = finalTargetScope.variables.get(finalTargetName);
-		}
+		for (
+			let targetVar: EnvVariable | undefined;
+			(targetVar = finalTargetScope.variables.get(finalTargetName)) && isReferenceLink(targetVar.value);
+			{ scope: finalTargetScope, name: finalTargetName } = targetVar.value
+		);
 
 		// 在最终位置赋值
 		let finalValue: VariableValue;
 		if (kind === AssignmentKind.REFERENCE) {
-			finalValue = isReferenceLink(value) ? value : executionScope.resolveValue(value);
+			finalValue = isReferenceLink(value) ? value : this.resolveValue(value);
 		} else {
-			finalValue = executionScope.resolveValue(value);
+			finalValue = this.resolveValue(value);
 			if (kind === AssignmentKind.MOVE) {
 				if (isReferenceLink(value)) markReferenceMoved(value); // 引用被移动，标记为「已移动」
 			} else if (kind === AssignmentKind.COPY && finalValue instanceof Environment) {
@@ -78,7 +75,7 @@ export class Environment {
 		}
 		finalTargetScope.variables.set(finalTargetName, { value: finalValue, moved: false });
 		logger.debug(
-			`[ENV #${executionScope.id}] 赋值: 环境 #${finalTargetScope.id} 中的「${finalTargetName}」被赋予 (方式: ${kind}) 值:`,
+			`[ENV #${this.id}] 赋值: 环境 #${finalTargetScope.id} 中的「${finalTargetName}」被赋予 (方式: ${kind}) 值:`,
 			finalValue
 		);
 
@@ -212,10 +209,8 @@ export class Environment {
 	 */
 	public isInsideOf(ancestor: Environment | undefined): boolean {
 		if (!ancestor) return false;
-		let current: Environment | undefined = this;
-		while (current) {
+		for (let current: Environment | undefined = this; current; current = current.parent) {
 			if (current === ancestor) return true;
-			current = current.parent;
 		}
 		return false;
 	}
@@ -224,5 +219,9 @@ export class Environment {
 		return `[= ${this.orderedVariableNames
 			.map((name, index) => (isAutoKey(name) ? `(${index + 1})` : `{${name}}`))
 			.join(', ')} =]`;
+	}
+
+	public get length(): number {
+		return this.orderedVariableNames.length;
 	}
 }

@@ -1,6 +1,6 @@
 // src/api/serviceState.ts
 
-import { builtInFunctionNames } from '../core/builtIns.js';
+import { MeaoiuBuiltInNames } from '../core/builtIns.js';
 import { ParseMode, Parser, type ParseResult } from '../core/parser.js';
 import { tokenize } from '../core/tokenizer.js';
 import { analyzeSymbols, type AnalyzeResult } from './utils/symbolAnalyzer.js';
@@ -61,7 +61,7 @@ export class ServiceState {
 	}
 
 	get analyzeResult() {
-		this.#analyzeResult ??= analyzeSymbols(this.parseResult.program, builtInFunctionNames);
+		this.#analyzeResult ??= analyzeSymbols(this.parseResult.program, MeaoiuBuiltInNames);
 		return this.#analyzeResult;
 	}
 }

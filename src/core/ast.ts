@@ -3,7 +3,7 @@
 import type { Token } from './tokenizer.js';
 
 export const enum NodeType {
-	// 节点
+	// 特例
 	ErrorNode,
 	Program,
 
@@ -38,7 +38,7 @@ export type Node = Statement | Expression | Program | ErrorNode;
 
 // 允许的属性类型
 type BaseType = string | number | boolean | null | undefined;
-export type NodeValue = BaseType | Node | Node[] | Token[];
+type NodeValue = BaseType | Node | Node[] | Token[];
 
 export interface AstNode<T extends NodeType = NodeType> {
 	type: T;
@@ -112,7 +112,7 @@ export interface AssignmentStatement extends AstNode<NodeType.AssignmentStatemen
 
 export interface FunctionDeclaration extends AstNode<NodeType.FunctionDeclaration> {
 	name: Identifier;
-	params: BlockExpression;
+	parameters: BlockExpression;
 	body: BlockExpression;
 }
 
@@ -158,7 +158,7 @@ export interface BlockExpression extends AstNode<NodeType.BlockExpression> {
 }
 
 export interface IfExpression extends AstNode<NodeType.IfExpression> {
-	test: Expression;
+	condition: Expression;
 	consequent: BlockExpression;
 	alternate?: BlockExpression | IfExpression | undefined;
 }

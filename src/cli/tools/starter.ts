@@ -1,13 +1,13 @@
 // src/cli/tools/starter.ts
 
-import type { BuiltInFunctions } from '../../core/builtIns.js';
+import type { MeaoiuBuiltIns } from '../../core/builtIns.js';
 import { Parser } from '../../core/parser.js';
 import { Environment } from '../../core/run/environment.js';
 import { evaluate } from '../../core/run/interpreter.js';
 import { tokenize } from '../../core/tokenizer.js';
 import { formatError } from './toolUtils.js';
 
-export async function run(sourceCode: string, builtIns: BuiltInFunctions, filePath: string) {
+export async function run(sourceCode: string, builtIns: MeaoiuBuiltIns, filePath: string) {
 	if (!sourceCode.trim()) return console.error('没有字喵！');
 	let start = 0,
 		end = 0;

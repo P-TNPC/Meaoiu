@@ -99,7 +99,7 @@ export class Parser {
 		this.MODE = mode;
 	}
 
-	// 当前 token（安全）
+	// 当前 token（安全！）
 	private current(): Token {
 		return this.tokens[this.position]!;
 	}
@@ -110,8 +110,8 @@ export class Parser {
 	}
 
 	/**
-	 * 返回当前位置的「非悄悄话 token」，并将位置推进到下一个 token（非悄悄话或 EOF）。
-	 * 同时把遇到的 COMMENT 收集到 commentBuffer。
+	 * 返回当前位置的「非悄悄话 token」，并将位置推进到下一个 token（非悄悄话或 EOF），
+	 * 同时把遇到的悄悄话收集到 commentBuffer
 	 * @returns 当前位置的 token（非 COMMENT）
 	 */
 	private advance(): Token {
@@ -121,7 +121,7 @@ export class Parser {
 	}
 
 	/**
-	 * 推进位置（同时掠取悄悄话）并取得下一 token。
+	 * 推进位置（同时掠取悄悄话）并取得下一 token
 	 * @returns 悄悄话之后一个 token 的再下一 token
 	 */
 	private next(): Token {
@@ -130,7 +130,7 @@ export class Parser {
 	}
 
 	/**
-	 * 返回上一个非悄悄话 token（不动位置）。
+	 * 返回上一个非悄悄话 token（不动位置）
 	 * @returns 上一个非悄悄话 token
 	 */
 	private lookBack(): Token {
@@ -141,7 +141,7 @@ export class Parser {
 	}
 
 	/**
-	 * 取得当前非悄悄话 token，若当前为悄悄话则连续推进至目标（同时收集悄悄话到 commentBuffer）。
+	 * 取得当前非悄悄话 token，若当前为悄悄话则连续推进至目标（同时收集悄悄话到 commentBuffer）
 	 * @returns 当前 token 或其后第一个非悄悄话 token（或 EOF）
 	 */
 	private drainCommentsAhead(): Token {
@@ -153,16 +153,21 @@ export class Parser {
 		return token;
 	}
 
-	// 从缓存中拿走所有待分配的 leading 悄悄话（并清空缓存）
+	/**
+	 * 从缓存中拿走所有待分配的 leading 悄悄话（并清空缓存）
+	 * @returns 所有待分配的悄悄话
+	 */
 	private takeLeadingComments(): Token[] {
 		const comments = this.commentBuffer;
 		this.commentBuffer = [];
 		return comments;
 	}
 
-	// 把缓存里的悄悄话按是否与 anchorToken 同一行分离：
-	// - 同行的视为 trailing（尾随悄悄话），附给 node
-	// - 不同的保留为未来节点的 leading（放回 commentBuffer）
+	/**
+	 * 把缓存里的悄悄话按是否与 anchorToken 同一行分离：
+	 * - 同行的视为 trailing（尾随悄悄话），附给 node
+	 * - 不同的保留为未来节点的 leading（放回 commentBuffer）
+	 */
 	private collectTrailingComments(node: AST.Node, anchorToken: Token): void {
 		this.drainCommentsAhead(); // 先把当前位置开始的悄悄话也收进缓存（保证没有漏掉）
 
@@ -192,6 +197,11 @@ export class Parser {
 		this.errors.push(error); // tolerant 模式记录错误
 	}
 
+	/**
+	 * 虚构尾随词元并报告错误。
+	 * @param type 虚构词元类型，若无预期则可传 TokenType.ERROR
+	 * @returns 虚构 token
+	 */
 	private makeErrorTail(type: TokenType, why: string, where?: string): Token {
 		// 找到前一个 token 做锚点
 		const prevToken = this.lookBack();
@@ -239,16 +249,10 @@ export class Parser {
 
 	public parse(): ParseResult {
 		const startToken = this.current();
-		const program: AST.Program = {
-			type: NodeType.Program,
-			body: [],
-			line: startToken.line,
-			col: startToken.col,
-			endLine: startToken.line,
-			endCol: startToken.col,
-		};
+		const { type: startType, line, col } = startToken;
+		const program: AST.Program = { type: NodeType.Program, body: [], line, col, endLine: line, endCol: col };
 
-		for (let tokenType: TokenType; (tokenType = this.current().type) !== TokenType.EOF; ) {
+		for (let tokenType = startType; tokenType !== TokenType.EOF; tokenType = this.current().type) {
 			if (tokenType === TokenType.TERMINATOR) this.advance();
 			else program.body.push(this.parseStatement());
 		}
@@ -289,12 +293,7 @@ export class Parser {
 					break;
 				case TokenType.KEYWORD_BREAK:
 					this.advance();
-					node = {
-						type: NodeType.BreakStatement,
-						line: startToken.line,
-						col: startToken.col,
-						...this.endLoc(),
-					};
+					node = { type: NodeType.BreakStatement, line: startToken.line, col: startToken.col, ...this.endLoc() };
 					break;
 				case TokenType.COLLECTION_END:
 				case TokenType.BLOCK_END:
@@ -306,13 +305,8 @@ export class Parser {
 					if (isAssignmentOperator(tokenType)) {
 						node = this.parseAssignmentStatement(expression, tokenType); // 将解析好的表达式作为“被赋值者”传入
 					} else {
-						node = {
-							type: NodeType.ExpressionStatement,
-							expression,
-							line: expression.line,
-							col: expression.col,
-							...this.endLoc(),
-						};
+						const { line, col } = expression;
+						node = { type: NodeType.ExpressionStatement, expression, line, col, ...this.endLoc() };
 					}
 			}
 			// 检查终结符但不消耗，消耗的工作交给 parse 和 parseBlockExpression
@@ -358,10 +352,10 @@ export class Parser {
 
 	private parseFunctionDeclaration(): AST.FunctionDeclaration {
 		const { line, col } = this.advance();
-		const params = this.parseBlockExpression(true);
+		const parameters = this.parseBlockExpression(true);
 		const name = this.parseIdentifier();
 		const body = this.parseBlockExpression(false);
-		return { type: NodeType.FunctionDeclaration, name, params, body, line, col, ...this.endLoc() };
+		return { type: NodeType.FunctionDeclaration, name, parameters, body, line, col, ...this.endLoc() };
 	}
 
 	private parseReturnOrAmbushStatement(
@@ -399,9 +393,9 @@ export class Parser {
 
 		// 循环处理连续的逻辑操作：A 和 B 都好 或 C 有好
 		for (
-			let tokenType = this.current().type, isOr = tokenType === TokenType.LOGIC_OR;
-			isOr || tokenType === TokenType.LOGIC_AND;
-			tokenType = this.current().type, isOr = tokenType === TokenType.LOGIC_OR
+			let tokenType = this.current().type, isOr: boolean;
+			(isOr = tokenType === TokenType.LOGIC_OR) || tokenType === TokenType.LOGIC_AND;
+			tokenType = this.current().type
 		) {
 			this.advance();
 			const right = this.parseLogicalExpression();
@@ -430,7 +424,7 @@ export class Parser {
 					throw errorFrom(closeToken, '世界崩坏喵: 你不该看到这个喵！');
 				default:
 					const [logic, close, nClose] = isOr ? ['或', '有好', '有坏'] : ['和', '都好', '都坏'];
-					this.makeErrorTail(closeToken.type, `逻辑「${logic}」要有「${close}」或「${nClose}」闭合喵！`);
+					this.makeErrorTail(TokenType.ERROR, `逻辑「${logic}」要有「${close}」或「${nClose}」闭合喵！`);
 					continue;
 			}
 			this.advance();
@@ -559,7 +553,7 @@ export class Parser {
 		for (let startToken: Token; (startToken = this.current()).type === TokenType.ACCESSOR; ) {
 			const { type: tokenType, value } = this.next();
 			if (tokenType === TokenType.ACCESSOR) {
-				this.makeErrorTail(tokenType, `不能连着写一长串「${value}」喵！`);
+				this.makeErrorTail(TokenType.ERROR, `不能连着写一长串「${value}」喵！`);
 				continue;
 			}
 
@@ -586,7 +580,7 @@ export class Parser {
 			case TokenType.BOOLEAN:
 				node = { type: NodeType.BooleanLiteral, value: value === '好喵', line, col, ...this.endLoc(startToken) };
 				break;
-			case TokenType.NULL_LITERAL:
+			case TokenType.NULL:
 				node = { type: NodeType.NullLiteral, value: null, line, col, ...this.endLoc(startToken) };
 				break;
 			case TokenType.IDENTIFIER:
@@ -618,8 +612,6 @@ export class Parser {
 		return this.current().type === TokenType.KEYWORD_CONFIRM ? this.parseIfExpression(block) : block;
 	}
 
-	private parseBlockExpression(isCollection: true): AST.BlockExpression;
-	private parseBlockExpression(isCollection: false): AST.BlockExpression;
 	private parseBlockExpression(isCollection: boolean): AST.BlockExpression {
 		const modeSwitch = +isCollection;
 		const { name, startType, startValue, separatorType, endType, endValue } = blockTypeInfo[modeSwitch]!;
@@ -635,7 +627,7 @@ export class Parser {
 			tokenType = this.next().type
 		) {
 			if (tokenType === separatorType) {
-				if (isCollection) this.makeErrorTail(separatorType, `这个「${this.current().value}」是多余的喵！`);
+				if (isCollection) this.makeErrorTail(TokenType.ERROR, `这个「${this.current().value}」是多余的喵！`);
 				continue;
 			}
 			body.push(statementParser());
@@ -666,18 +658,22 @@ export class Parser {
 
 	private parseIfExpression(consequent: AST.BlockExpression): AST.IfExpression {
 		this.advance();
-		const test = this.parseExpression();
+		const condition = this.parseExpression();
 		let alternate: AST.IfExpression['alternate'];
 
-		let tokenType = this.current().type;
-		if (tokenType === TokenType.TERMINATOR && this.peek().type === TokenType.KEYWORD_ELSE) tokenType = this.next().type; // 吃掉可选的「~」
-		if (tokenType === TokenType.KEYWORD_ELSE) {
+		const tokenType = this.current().type;
+		if (
+			tokenType === TokenType.KEYWORD_ELSE ||
+			(tokenType === TokenType.TERMINATOR &&
+				this.peek().type === TokenType.KEYWORD_ELSE &&
+				(this.next() /* 吃掉可选「~」*/, true))
+		) {
 			if (this.next().type === TokenType.BLOCK_START) alternate = this.parseBlockOrIfExpression();
 			else this.makeErrorTail(TokenType.BLOCK_START, `要有想法「[#...#]」喵！`);
 		}
 
 		const { line, col } = consequent;
-		return { type: NodeType.IfExpression, consequent, test, alternate, line, col, ...this.endLoc() };
+		return { type: NodeType.IfExpression, consequent, condition, alternate, line, col, ...this.endLoc() };
 	}
 
 	private parseLoopExpression(): AST.LoopExpression {

@@ -1,7 +1,7 @@
 // src/core/tokenizer.ts
 
 import { preprocess } from './preprocessor.js';
-import { builtInFunctionNames } from './builtIns.js';
+import { MeaoiuBuiltInNames } from './builtIns.js';
 
 export const enum TokenType {
 	ERROR, //不认识的字符喵
@@ -10,8 +10,8 @@ export const enum TokenType {
 	KEYWORD_USE,
 	KEYWORD_IS,
 	KEYWORD_LIKE,
-	KEYWORD_CLONE,
 	KEYWORD_ONLY,
+	KEYWORD_CLONE,
 	KEYWORD_MOVE,
 	KEYWORD_CONFIRM,
 	KEYWORD_ELSE,
@@ -26,7 +26,7 @@ export const enum TokenType {
 	NUMBER,
 	STRING,
 	BOOLEAN,
-	NULL_LITERAL,
+	NULL,
 
 	// 标识符
 	IDENTIFIER,
@@ -71,7 +71,7 @@ export const KEYWORDS = {
 	偷袭: TokenType.KEYWORD_AMBUSH,
 	好喵: TokenType.BOOLEAN,
 	坏喵: TokenType.BOOLEAN,
-	空碗: TokenType.NULL_LITERAL,
+	空碗: TokenType.NULL,
 	和: TokenType.LOGIC_AND,
 	或: TokenType.LOGIC_OR,
 	都好: TokenType.LOGIC_CLOSE_AND,
@@ -106,22 +106,23 @@ export type TokenizerOptions = {
 
 export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[] {
 	const { ignoreComments = true, convertFullWidth = true, useOnebased = true } = options ?? {};
+	const OriginBase = +useOnebased;
 	if (convertFullWidth) sourceCode = preprocess(sourceCode);
 
 	// 小本本：记函数
-	const functionNames = new Set<string>(builtInFunctionNames);
+	const functionNames = new Set<string>(MeaoiuBuiltInNames);
 	let expectingFuncNameAfterParamEnd = false;
 
 	const tokens: Token[] = [];
-	let line = +useOnebased;
-	let col = +useOnebased;
-	let cursor = 0;
+	let line = OriginBase,
+		col = OriginBase,
+		cursor = 0;
 
 	const advance = (steps = 1) => {
 		for (let i = 0; i < steps; i++) {
 			if (sourceCode[cursor + i] === '\n') {
 				line++;
-				col = 1;
+				col = OriginBase;
 			} else {
 				col++;
 			}

@@ -38,9 +38,9 @@ const typeMap = {
 export function getMeaoiuType(v: unknown): MeaoiuType {
 	if (v === null || v === undefined) return MeaoiuType.NULL;
 	if (v instanceof Environment) return MeaoiuType.COLLECTION;
+	if (v !== v) return MeaoiuType.UNKNOWN;
 	const t = typeof v;
-	if (t in typeMap) return typeMap[t as TypeMapKey];
-	return MeaoiuType.UNKNOWN;
+	return typeMap[t as TypeMapKey] ?? MeaoiuType.UNKNOWN;
 }
 
 /**

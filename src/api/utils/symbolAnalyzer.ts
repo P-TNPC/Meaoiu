@@ -2,7 +2,7 @@
 
 import type * as AST from '../../core/ast.js';
 import { AssignmentKind, NodeType } from '../../core/ast.js';
-import type { builtInFunctionNames } from '../../core/builtIns.js';
+import type { MeaoiuBuiltInNames } from '../../core/builtIns.js';
 import { errorFrom, type MeaoiuError } from '../../core/error.js';
 import { MeaoiuType, checkArithmeticOperation, checkComparisonOperation } from '../../core/typedef.js';
 import { SymbolKind, SymbolTag, type Scope, type SymbolInfo } from './symbolTable.js';
@@ -101,7 +101,7 @@ class SymbolAnalyzer {
 				break;
 			}
 			case NodeType.IfExpression: {
-				this.visit(node.test);
+				this.visit(node.condition);
 				this.visit(node.consequent);
 				this.visit(node.alternate);
 				break;
@@ -166,7 +166,7 @@ class SymbolAnalyzer {
 		this.declare(node.name.symbol, SymbolKind.FUNCTION, SymbolTag.NORMAL, MeaoiuType.FUNCTION, node.name);
 		this.enterScope();
 
-		for (const paramStmt of node.params.body) {
+		for (const paramStmt of node.parameters.body) {
 			if (paramStmt.type === NodeType.VariableDeclaration) {
 				// 情况 1: [= a 就是 1 =] 或 [= 蹭 a =]
 				// 这种语句本身就包含了声明逻辑，直接 visit 即可
@@ -446,14 +446,12 @@ class SymbolAnalyzer {
 
 	private lookup(name: string, resolveChain: boolean = true): SymbolInfo | undefined {
 		// 1. 在作用域中找到该名字的“第一环”
-		let s: Scope | undefined = this.currentScope;
 		let foundSymbol: SymbolInfo | undefined;
-		while (s) {
-			if (s.symbols.has(name)) {
-				foundSymbol = s.symbols.get(name);
+		for (let scope: Scope | undefined = this.currentScope; scope; scope = scope.parent) {
+			if (scope.symbols.has(name)) {
+				foundSymbol = scope.symbols.get(name);
 				break;
 			}
-			s = s.parent;
 		}
 		if (!foundSymbol) return undefined;
 
@@ -461,8 +459,7 @@ class SymbolAnalyzer {
 		if (!resolveChain) return foundSymbol;
 
 		// 3. 追踪引用链，检查整条链上的“已移动”状态
-		let current: SymbolInfo | undefined = foundSymbol;
-		while (current) {
+		for (let current: SymbolInfo | undefined = foundSymbol; current; current = current.valueRef) {
 			if (current.tag !== SymbolTag.NORMAL) {
 				// 创建一个已衰变的符号对象
 				foundSymbol = {
@@ -479,7 +476,6 @@ class SymbolAnalyzer {
 				this.currentScope.symbols.set(name, foundSymbol);
 				break;
 			}
-			current = current.valueRef;
 		}
 
 		return foundSymbol;
@@ -493,7 +489,7 @@ export type AnalyzeResult = {
 	nodeScopeMap: SymbolAnalyzer['nodeScopeMap'];
 };
 
-export function analyzeSymbols(ast: AST.Program, builtInNames: typeof builtInFunctionNames): AnalyzeResult {
+export function analyzeSymbols(ast: AST.Program, builtInNames: typeof MeaoiuBuiltInNames): AnalyzeResult {
 	const rootScope: Scope = { children: [], symbols: new Map() };
 	for (const name of builtInNames) {
 		rootScope.symbols.set(name, {

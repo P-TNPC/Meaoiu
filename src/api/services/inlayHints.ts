@@ -108,7 +108,7 @@ export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 				const funcDecNode = parentMap.get(calleeInfo.declarations[0]);
 
 				if (funcDecNode?.type === NodeType.FunctionDeclaration) {
-					const paramNames = extractParamNames(funcDecNode.params);
+					const paramNames = extractParamNames(funcDecNode.parameters);
 					const argsBlock = node.args;
 					argsBlock.body.forEach((argStmt, index) => {
 						if (index >= paramNames.length) return;
