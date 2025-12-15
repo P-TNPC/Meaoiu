@@ -28,7 +28,7 @@ export function findIdentifierAt(ast: AST.Node, line: number, col: number): AST.
 		// 递归遍历所有子节点
 		for (const key in node) {
 			const value = node[key];
-			if (typeof value !== 'object' || !value) continue;
+			if (!value || typeof value !== 'object') continue;
 			if (!Array.isArray(value)) walk(value);
 			else if (isNodeArray(value)) value.forEach(child => walk(child));
 		}
@@ -45,7 +45,7 @@ export function buildParentMap(node: AST.Node) {
 
 		for (const key in node) {
 			const value = node[key];
-			if (typeof value !== 'object' || !value) continue;
+			if (!value || typeof value !== 'object') continue;
 			if (!Array.isArray(value)) build(value, node);
 			else if (isNodeArray(value)) value.forEach(child => build(child, node));
 		}

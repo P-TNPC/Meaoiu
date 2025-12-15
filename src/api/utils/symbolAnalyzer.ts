@@ -33,11 +33,6 @@ class SymbolAnalyzer {
 				return this.lookup(node.symbol)?.type ?? MeaoiuType.UNKNOWN;
 			case NodeType.BlockExpression:
 				return node.isCollection ? MeaoiuType.COLLECTION : MeaoiuType.UNKNOWN;
-			case NodeType.CallExpression: {
-				const func = this.lookup(node.callee.symbol);
-				if (func?.kind === SymbolKind.FUNCTION) return MeaoiuType.UNKNOWN; // 函数调用时无法静态知道返回类型
-				return MeaoiuType.UNKNOWN;
-			}
 			case NodeType.ArithmeticExpression: {
 				const op = node.operator;
 				if (op !== '+') return MeaoiuType.NUMBER;
@@ -50,12 +45,13 @@ class SymbolAnalyzer {
 					: MeaoiuType.UNKNOWN;
 			}
 			case NodeType.SequenceExpression: {
+				const { sections, operators } = node;
 				let accType = MeaoiuType.UNKNOWN;
-				let knownType = this.inferExpressionType(node.sections[0]!);
+				let knownType = this.inferExpressionType(sections[0]!);
 
-				scan: for (let i = 0; i < node.operators.length; i++) {
+				scan: for (let i = 0; i < operators.length; i++) {
 					if (accType !== MeaoiuType.UNKNOWN) continue;
-					const op = node.operators[i]!.value;
+					const op = operators[i]!.value;
 					switch (op) {
 						case '+':
 							break;
@@ -68,7 +64,7 @@ class SymbolAnalyzer {
 							continue;
 					}
 
-					if (knownType === MeaoiuType.UNKNOWN) knownType = this.inferExpressionType(node.sections[i + 1]!);
+					if (knownType === MeaoiuType.UNKNOWN) knownType = this.inferExpressionType(sections[i + 1]!);
 
 					if (
 						knownType === MeaoiuType.NUMBER ||
@@ -84,12 +80,13 @@ class SymbolAnalyzer {
 				// 高仿/抢走，类型与它操作的参数一致
 				return this.inferExpressionType(node.argument);
 			case NodeType.MemberAccessExpression: // @ 访问符，目前无法静态知道它会返回什么
+			case NodeType.CallExpression: // 函数调用，目前无法静态知道返回类型
 			default:
 				return MeaoiuType.UNKNOWN;
 		}
 	}
 
-	public visit(node: AST.Node | undefined) {
+	public visit(node: AST.Node | undefined): void {
 		if (!node) return;
 		this.nodeScopeMap.set(node, this.currentScope);
 		switch (node.type) {
@@ -162,7 +159,7 @@ class SymbolAnalyzer {
 		}
 	}
 
-	private visitFunctionDeclaration(node: AST.FunctionDeclaration) {
+	private visitFunctionDeclaration(node: AST.FunctionDeclaration): void {
 		this.declare(node.name.symbol, SymbolKind.FUNCTION, SymbolTag.NORMAL, MeaoiuType.FUNCTION, node.name);
 		this.enterScope();
 
@@ -197,7 +194,7 @@ class SymbolAnalyzer {
 		this.leaveScope();
 	}
 
-	private visitVariableDeclaration(node: AST.VariableDeclaration) {
+	private visitVariableDeclaration(node: AST.VariableDeclaration): void {
 		const { identifier, initialization: init } = node;
 		let inferredType = MeaoiuType.NULL;
 		let valueRef: SymbolInfo | undefined; // 存储引用的符号
@@ -222,12 +219,13 @@ class SymbolAnalyzer {
 		this.declare(identifier.symbol, SymbolKind.VARIABLE, tag, inferredType, identifier, valueRef);
 	}
 
-	private visitAssignmentStatement(node: AST.AssignmentStatement) {
+	private visitAssignmentStatement(node: AST.AssignmentStatement): void {
 		const { value, assignee, kind } = node;
 		this.visit(value);
 		const valueType = this.inferExpressionType(value);
 
-		if (assignee.type === NodeType.Identifier) {
+		if (assignee.type !== NodeType.Identifier) this.visit(assignee);
+		else {
 			this.visitIdentifier(assignee, false);
 			const originalSymbol = this.symbolMap.get(assignee); // 取得原始符号
 
@@ -257,12 +255,12 @@ class SymbolAnalyzer {
 					this.errors.push(errorFrom(assignee, `被移过的 '${assignee.symbol}' 失效了喵！`));
 				}
 			}
-		} else this.visit(assignee);
+		}
 
 		if (kind === AssignmentKind.MOVE && value.type === NodeType.Identifier) this.markAsMoved(value.symbol);
 	}
 
-	private visitArithmeticExpression(node: AST.ArithmeticExpression) {
+	private visitArithmeticExpression(node: AST.ArithmeticExpression): void {
 		const { operator: op, left, right } = node;
 		this.visit(left);
 		this.visit(right);
@@ -270,19 +268,16 @@ class SymbolAnalyzer {
 		let leftType = this.inferExpressionType(left);
 		let rightType = this.inferExpressionType(right);
 
-		// 计算状态码 (0-3)
-		const state = (+(leftType === MeaoiuType.UNKNOWN) << 1) | +(rightType === MeaoiuType.UNKNOWN);
-		// 根据状态码查表执行
-		switch (state) {
-			case 3: // 二进制 11: left 和 right 都是 unknown
-				return;
-			case 2: // 二进制 10: 仅 left 是 unknown
+		switch ((+(leftType === MeaoiuType.UNKNOWN) << 1) | +(rightType === MeaoiuType.UNKNOWN)) {
+			case 0b11: // 都不懂
+				return; // 跳过检查
+			case 0b10: // 左不懂
 				leftType = rightType;
 				break;
-			case 1: // 二进制 01: 仅 right 是 unknown
+			case 0b01: // 右不懂
 				rightType = leftType;
 				break;
-			case 0: // 二进制 00: 两者都非 unknown
+			case 0b00: // 全都懂
 				break;
 		}
 
@@ -290,35 +285,30 @@ class SymbolAnalyzer {
 		if (error) this.errors.push(errorFrom(node, error));
 	}
 
-	private visitComparisonExpression(node: AST.ComparisonExpression) {
-		if (node.expressions.length < 2) {
-			this.visit(node.expressions[0]);
-			return;
-		}
+	private visitComparisonExpression(node: AST.ComparisonExpression): void {
+		const { expressions, operators } = node;
+		let currentLeftType = this.inferExpressionType(expressions[0]!);
+		this.visit(expressions[0]); // 访问第一个
 
-		let currentLeftType = this.inferExpressionType(node.expressions[0]!);
-		this.visit(node.expressions[0]); // 访问第一个
-
-		for (let i = 0; i < node.operators.length; i++) {
-			const currentRightExpr = node.expressions[i + 1]!;
+		for (let i = 0; i < operators.length; i++) {
+			const currentRightExpr = expressions[i + 1]!;
 			let currentRightType = this.inferExpressionType(currentRightExpr); // 必须是 let
 			this.visit(currentRightExpr); // 访问右边
 
-			const state = (+(currentLeftType === MeaoiuType.UNKNOWN) << 1) | +(currentRightType === MeaoiuType.UNKNOWN);
-			switch (state) {
-				case 3: // 二进制 11: left 和 right 都是 unknown
+			switch ((+(currentLeftType === MeaoiuType.UNKNOWN) << 1) | +(currentRightType === MeaoiuType.UNKNOWN)) {
+				case 0b11: // 都不懂
 					continue; // 跳过检查
-				case 2: // 二进制 10: 仅 left 是 unknown
+				case 0b10: // 左不懂
 					currentLeftType = currentRightType;
 					break;
-				case 1: // 二进制 01: 仅 right 是 unknown
+				case 0b01: // 右不懂
 					currentRightType = currentLeftType;
 					break;
-				case 0: // 二进制 00: 两者都非 unknown
+				case 0b00: // 全都懂
 					break;
 			}
 
-			const opToken = node.operators[i]!;
+			const opToken = operators[i]!;
 			const error = checkComparisonOperation(opToken.value, currentLeftType, currentRightType);
 			if (error) this.errors.push(errorFrom(opToken, error));
 
@@ -326,33 +316,31 @@ class SymbolAnalyzer {
 		}
 	}
 
-	private visitSequenceExpression(node: AST.SequenceExpression) {
-		let accType = this.inferExpressionType(node.sections[0]!);
-		this.visit(node.sections[0]); // 访问第一节
+	private visitSequenceExpression(node: AST.SequenceExpression): void {
+		const { sections, operators } = node;
+		let accType = this.inferExpressionType(sections[0]!);
+		this.visit(sections[0]); // 访问第一节
 
-		for (let i = 0; i < node.operators.length; i++) {
-			const opToken = node.operators[i]!,
+		for (let i = 0; i < operators.length; i++) {
+			const opToken = operators[i]!,
 				op = opToken.value;
-			if (op === '==' || op === '!=') {
-				this.visitComparisonSequence(node, i + 1); // 让专用检查函数接力
-				return; // 本函数已结束使命
-			}
-			const nextExpr = node.sections[i + 1]!;
+			if (op === '==' || op === '!=') return this.visitComparisonSequence(node, i + 1); // 让专用检查函数接力，本函数已结束使命
+
+			const nextExpr = sections[i + 1]!;
 			let nextType = this.inferExpressionType(nextExpr);
 			this.visit(nextExpr); // 访问下一节
 
-			const state = (+(accType === MeaoiuType.UNKNOWN) << 1) | +(nextType === MeaoiuType.UNKNOWN);
-			switch (state) {
-				case 3: // 二进制 11: unknown op unknown
+			switch ((+(accType === MeaoiuType.UNKNOWN) << 1) | +(nextType === MeaoiuType.UNKNOWN)) {
+				case 0b11: // 都不懂
 					if (op !== '+') accType = MeaoiuType.NUMBER; // 非加号，锁定类型
 					continue; // 跳过检查
-				case 2: // 二进制 10: 仅 acc 是 unknown
+				case 0b10: // 前不懂
 					accType = nextType;
 					break;
-				case 1: // 二进制 01: 仅 next 是 unknown
+				case 0b01: // 后不懂
 					nextType = accType;
 					break;
-				case 0: // 二进制 00: 两者都非 unknown
+				case 0b00: // 全都懂
 					break;
 			}
 
@@ -366,13 +354,13 @@ class SymbolAnalyzer {
 		}
 	}
 
-	private visitComparisonSequence(node: AST.SequenceExpression, startIndex: number) {
-		// 访问第一个比较操作的右侧
-		this.visit(node.sections[startIndex]);
+	private visitComparisonSequence(node: AST.SequenceExpression, startIndex: number): void {
+		const { sections, operators } = node;
+		this.visit(sections[startIndex]); // 访问第一个比较操作的右侧
 
 		// 遍历链上剩下的所有操作符
-		for (let i = startIndex; i < node.operators.length; i++) {
-			const opToken = node.operators[i]!,
+		for (let i = startIndex; i < operators.length; i++) {
+			const opToken = operators[i]!,
 				op = opToken.value;
 
 			// 检查是否混入了非比较运算符
@@ -382,16 +370,16 @@ class SymbolAnalyzer {
 			}
 
 			// 访问下一个元素
-			this.visit(node.sections[i + 1]!);
+			this.visit(sections[i + 1]!);
 		}
 	}
 
-	private visitLogicalExpression(node: AST.LogicalExpression) {
+	private visitLogicalExpression(node: AST.LogicalExpression): void {
 		this.visit(node.left);
 		this.visit(node.right);
 	}
 
-	private visitIdentifier(node: AST.Identifier, checkTag: boolean = true) {
+	private visitIdentifier(node: AST.Identifier, checkTag: boolean = true): void {
 		const symbol = this.lookup(node.symbol); // 默认 resolveChain = true
 		if (!symbol) {
 			this.errors.push(errorFrom(node, `找不到名字为 '${node.symbol}' 的玩具喵！`));
@@ -404,7 +392,7 @@ class SymbolAnalyzer {
 		this.symbolMap.set(node, symbol);
 	}
 
-	private markAsMoved(name: string) {
+	private markAsMoved(name: string): void {
 		// 查找原始符号
 		const symbolToMove = this.lookup(name, false);
 		if (!symbolToMove) return;
@@ -415,13 +403,13 @@ class SymbolAnalyzer {
 		finalSymbol.tag = SymbolTag.MOVED;
 	}
 
-	private enterScope() {
+	private enterScope(): void {
 		const newScope: Scope = { parent: this.currentScope, children: [], symbols: new Map() };
 		this.currentScope.children.push(newScope);
 		this.currentScope = newScope;
 	}
 
-	private leaveScope() {
+	private leaveScope(): void {
 		this.currentScope = this.currentScope.parent!;
 	}
 
@@ -432,7 +420,7 @@ class SymbolAnalyzer {
 		type: MeaoiuType,
 		declarationNode: AST.Identifier,
 		valueRef?: SymbolInfo
-	) {
+	): void {
 		if (this.currentScope.symbols.has(name)) {
 			this.errors.push(errorFrom(declarationNode, `名字 '${name}' 已经被定义过了喵！`));
 			return;
@@ -504,5 +492,6 @@ export function analyzeSymbols(ast: AST.Program, builtInNames: typeof MeaoiuBuil
 	}
 	const analyzer = new SymbolAnalyzer(rootScope);
 	analyzer.visit(ast);
-	return { rootScope, errors: analyzer.errors, symbolMap: analyzer.symbolMap, nodeScopeMap: analyzer.nodeScopeMap };
+	const { errors, symbolMap, nodeScopeMap } = analyzer;
+	return { rootScope, errors, symbolMap, nodeScopeMap };
 }

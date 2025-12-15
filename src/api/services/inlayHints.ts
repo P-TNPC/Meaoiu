@@ -26,7 +26,7 @@ const enum InlayHintKind {
 export interface InlayHint {
 	position: Position;
 	label: string;
-	kind?: InlayHintKind;
+	kind: InlayHintKind;
 	paddingLeft?: boolean;
 	paddingRight?: boolean;
 }
@@ -35,9 +35,8 @@ export interface InlayHint {
  * 辅助函数：追踪引用链找到最终的符号
  */
 function findUltimateSource(symbol: SymbolInfo): SymbolInfo {
-	let current = symbol;
-	while (current.valueRef) current = current.valueRef;
-	return current;
+	while (symbol.valueRef) symbol = symbol.valueRef;
+	return symbol;
 }
 
 /**
@@ -71,35 +70,34 @@ export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 	const parentMap = buildParentMap(ast); // 构建父节点映射
 
 	const { symbolMap } = serviceState.analyzeResult;
+	const moveMarks = ['_' /*MOVED*/, '' /*NORMAL*/, '!' /*DECAYED*/];
 
 	// 生成变量类型和引用源提示
 	symbolMap.forEach((symbolInfo, node) => {
-		if (
-			node.type !== NodeType.Identifier ||
-			symbolInfo.kind === SymbolKind.FUNCTION ||
-			(symbolInfo.type === MeaoiuType.UNKNOWN && !symbolInfo.valueRef)
-		) {
-			return;
-		}
-		const isReference = symbolInfo.references.includes(node);
-		const { name: ultimateName, tag: ultimateTag } = findUltimateSource(symbolInfo);
-		const { name, type } = symbolInfo;
+		if (node.type !== NodeType.Identifier || symbolInfo.kind === SymbolKind.FUNCTION) return;
 
-		const moveMark = ultimateTag === SymbolTag.NORMAL ? '' : ultimateTag === SymbolTag.DECAYED ? '!' : '_';
-		const sourceName = ultimateName === name ? '' : `${ultimateTag !== SymbolTag.NORMAL ? '' : '*'}${ultimateName}`;
-		const symbolType = isReference || type === MeaoiuType.UNKNOWN ? '' : `:${typeNames[type]}`;
+		const { name, type } = symbolInfo;
+		const isUnknown = type === MeaoiuType.UNKNOWN;
+		const isReference = !!symbolInfo.valueRef;
+		if (isUnknown && !isReference) return;
+
+		const { name: ultimateName, tag: ultimateTag } = findUltimateSource(symbolInfo);
+		const isUltimateNormal = ultimateTag === SymbolTag.NORMAL;
+		const isUltimateDecayed = ultimateTag === SymbolTag.DECAYED;
+
+		const moveMark = moveMarks[+isUltimateNormal || +isUltimateDecayed << 1]!;
+		const sourceName = ultimateName === name ? '' : `${!isUltimateNormal ? '' : '*'}${ultimateName}`;
+		const symbolType = isReference || isUnknown || isUltimateDecayed ? '' : `:${typeNames[type]}`;
+
 		hints.push({
 			position: { line: node.line, character: node.endCol },
 			label: `${moveMark}${sourceName}${symbolType}`,
 			kind: InlayHintKind.Type,
-			// paddingLeft: true,
 		});
 	});
 
 	// 生成函数参数名提示
 	function walk(node: AST.Node) {
-		if (!node) return;
-
 		if (node.type === NodeType.CallExpression && node.args.type === NodeType.BlockExpression && node.args.isCollection) {
 			const calleeInfo = symbolMap.get(node.callee);
 
@@ -109,17 +107,16 @@ export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 
 				if (funcDecNode?.type === NodeType.FunctionDeclaration) {
 					const paramNames = extractParamNames(funcDecNode.parameters);
-					const argsBlock = node.args;
-					argsBlock.body.forEach((argStmt, index) => {
-						if (index >= paramNames.length) return;
+					for (const [index, { line, col }] of node.args.body.entries()) {
+						if (index >= paramNames.length) break;
 						const paramName = paramNames[index];
 						hints.push({
-							position: { line: argStmt.line, character: argStmt.col },
+							position: { line, character: col },
 							label: `${paramName}:`,
 							kind: InlayHintKind.Parameter,
 							paddingRight: true,
 						});
-					});
+					}
 				}
 			}
 		}
@@ -127,7 +124,7 @@ export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 		// 递归遍历子节点
 		for (const key in node) {
 			const value = node[key];
-			if (typeof value !== 'object' || !value) continue;
+			if (!value || typeof value !== 'object') continue;
 			if (!Array.isArray(value)) walk(value);
 			else if (isNodeArray(value)) value.forEach(child => walk(child));
 		}

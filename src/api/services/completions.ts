@@ -39,20 +39,18 @@ const suggestionKinds = {
 	[SymbolKind.VARIABLE]: SuggestionKind.VARIABLE,
 	[SymbolKind.PARAMETER]: SuggestionKind.REFERENCE,
 } as const satisfies Record<SymbolKind, SuggestionKind>;
+
 // 获取一个作用域内所有可见的符号
 function getVisibleSymbols(scope: Scope): Suggestion[] {
 	const keys = new Set<string>();
 	const symbols: Suggestion[] = [];
-	let current: Scope | undefined = scope;
-	while (current) {
-		current.symbols.forEach(symbol => {
-			const key = `${symbol.name}\n:${symbol.kind}`;
-			if (!keys.has(key)) {
-				keys.add(key);
-				symbols.push({ label: symbol.name, kind: suggestionKinds[symbol.kind] });
-			}
+	for (let current: Scope | undefined = scope; current; current = current.parent) {
+		current.symbols.forEach(({ name: label, kind }) => {
+			const key = `${label}::${kind}`;
+			if (keys.has(key)) return;
+			keys.add(key);
+			symbols.push({ label, kind: suggestionKinds[kind] });
 		});
-		current = current.parent;
 	}
 	return symbols;
 }
@@ -62,7 +60,7 @@ export function getCompletions(serviceState: ServiceState, position: { line: num
 	const currentScope = findScopeAt(position, nodeScopeMap) ?? rootScope;
 
 	const symbolSuggestions = getVisibleSymbols(currentScope);
-	const keywordSuggestions = sortedKeywords.map<Suggestion>(k => ({ label: k, kind: SuggestionKind.KEYWORD }));
+	const keywordSuggestions = sortedKeywords.map<Suggestion>(label => ({ label, kind: SuggestionKind.KEYWORD }));
 
 	return [...symbolSuggestions, ...keywordSuggestions.reverse()];
 }

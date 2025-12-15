@@ -28,18 +28,13 @@ export function getHoverInfo(serviceState: ServiceState, position: { line: numbe
 	const symbolInfo = serviceState.analyzeResult.symbolMap.get(identifierNode);
 	if (!symbolInfo) return undefined;
 
-	const declaration = symbolInfo.declarations[0];
-	let hoverText = `**(${kindMap[symbolInfo.kind] ?? 'unknown'}) ${symbolInfo.name} : ${typeNames[symbolInfo.type]}**`;
-	if (symbolInfo.tag === SymbolTag.MOVED) hoverText += `\n\n(被标记为已移动)`;
-	else if (symbolInfo.tag === SymbolTag.DECAYED) hoverText += `\n\n(源已被移走，不可用)`;
-	if (declaration) hoverText += `\n\n在 L${declaration.line}:${declaration.col} 处声明`;
-	else hoverText += `\n\n(这是一个内置计谋)`;
+	const { name, kind, type, tag, declarations } = symbolInfo;
+	const declaration = declarations[0];
 
-	return {
-		text: hoverText,
-		line: identifierNode.line,
-		col: identifierNode.col,
-		endLine: identifierNode.endLine,
-		endCol: identifierNode.endCol,
-	};
+	const text = `**(${kindMap[kind] ?? 'unknown'}) ${name} : ${typeNames[type]}**${
+		tag === SymbolTag.MOVED ? '\n\n(被标记为已移动)' : tag === SymbolTag.DECAYED ? '\n\n(源已被移走，不可用)' : ''
+	}\n\n${declaration ? `在 L${declaration.line}:${declaration.col} 处声明` : `(这是一个内置计谋)`}`;
+
+	const { line, col, endLine, endCol } = identifierNode;
+	return { text, line, col, endLine, endCol };
 }

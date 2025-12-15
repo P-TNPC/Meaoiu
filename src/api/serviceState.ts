@@ -5,7 +5,7 @@ import { ParseMode, Parser, type ParseResult } from '../core/parser.js';
 import { tokenize } from '../core/tokenizer.js';
 import { analyzeSymbols, type AnalyzeResult } from './utils/symbolAnalyzer.js';
 
-type DocState = { version: number; sourceCode: string };
+type DocState = { version: number; getText: () => string };
 
 export class StateManager {
 	#useOnebased: boolean;
@@ -16,11 +16,11 @@ export class StateManager {
 	}
 
 	public makeDocState(version: number, sourceCode: string): DocState {
-		return { version, sourceCode };
+		return { version, getText: () => sourceCode };
 	}
 
 	public updateState(doc: DocState): ServiceState {
-		const state = new ServiceState(doc.version, doc.sourceCode, this.#useOnebased);
+		const state = new ServiceState(doc.version, doc.getText(), this.#useOnebased);
 		this.stateCache.set(doc, state);
 		return state;
 	}

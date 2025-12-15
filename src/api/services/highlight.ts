@@ -28,7 +28,6 @@ export function getHighlightTokens(serviceState: ServiceState): HighlightToken[]
 
 	symbolMap.forEach(symbolInfo => {
 		const typeIndex = typeIndexMap[symbolInfo.kind];
-		if (typeIndex === undefined) return;
 
 		// 收集声明
 		symbolInfo.declarations.forEach(dec => {
@@ -46,7 +45,7 @@ export function getHighlightTokens(serviceState: ServiceState): HighlightToken[]
 
 		// 收集引用
 		symbolInfo.references.forEach(ref => {
-			const modifiers = [];
+			const modifiers: number[] = [];
 			if (symbolInfo.isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
 			if (symbolInfo.tag === SymbolTag.DECAYED) modifiers.push(tokenModifiers.indexOf('deprecated'));
 			const parent = parentMap.get(ref);
