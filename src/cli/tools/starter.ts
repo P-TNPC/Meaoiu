@@ -18,7 +18,7 @@ export async function run(sourceCode: string, builtIns: MeaoiuBuiltIns, filePath
 		start = performance.now();
 		const tokens = tokenize(sourceCode);
 		const parser = new Parser(tokens);
-		const { program: ast } = parser.parse();
+		const ast = parser.parse().program;
 		const globalEnv = new Environment();
 		await evaluate(ast, globalEnv, builtIns, {});
 		end = performance.now();

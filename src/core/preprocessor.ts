@@ -193,8 +193,8 @@ export function preprocess(sourceCode: string): string {
 			}
 
 			default:
-				const n: never = state;
-				n;
+				const _s: never = state;
+				console.error('只是告诉你发生了奇怪的事情:', _s);
 		}
 	}
 	return result;

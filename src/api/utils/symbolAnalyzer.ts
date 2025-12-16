@@ -8,9 +8,9 @@ import { MeaoiuType, checkArithmeticOperation, checkComparisonOperation } from '
 import { SymbolKind, SymbolTag, type Scope, type SymbolInfo } from './symbolTable.js';
 
 class SymbolAnalyzer {
-	public errors: MeaoiuError[] = [];
-	public symbolMap: Map<AST.Node, SymbolInfo> = new Map();
-	public nodeScopeMap: Map<AST.Node, Scope> = new Map();
+	public readonly errors: MeaoiuError[] = [];
+	public readonly symbolMap: Map<AST.Node, SymbolInfo> = new Map();
+	public readonly nodeScopeMap: Map<AST.Node, Scope> = new Map();
 	private currentScope: Scope;
 
 	constructor(rootScope: Scope) {

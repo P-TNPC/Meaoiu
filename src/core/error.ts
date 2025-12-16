@@ -8,11 +8,11 @@ type EndPosition = { endLine: number; endCol: number };
 type ErrorParams = { message: string } & StartPosition & (EndPosition | {});
 
 export class MeaoiuError {
-	public message: string;
-	public line: number;
-	public col: number;
-	public endLine: number;
-	public endCol: number;
+	public readonly message: string;
+	public readonly line: number;
+	public readonly col: number;
+	public readonly endLine: number;
+	public readonly endCol: number;
 
 	constructor(params: ErrorParams) {
 		const { message, line, col } = params;

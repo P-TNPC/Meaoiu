@@ -4,7 +4,7 @@ import { getCompletions, SuggestionKind } from '../../api/services/completions.j
 import { ServiceState } from '../../api/serviceState.js';
 import { parsePosition } from './toolUtils.js';
 
-export function complete(sourceCode: string, posRaw?: string) {
+export function complete(sourceCode: string, posRaw?: string): void {
 	const pos = parsePosition(posRaw);
 
 	type KindString = 'variable' | 'function' | 'parameter' | 'keyword';

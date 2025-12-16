@@ -13,24 +13,36 @@ import {
 	type VariableValue,
 } from './value.js';
 
-export function markReferenceMoved(ref: ReferenceLink): void {
-	ref.scope.variables.get(ref.name)!.moved = true;
-}
-
-const isAutoKey = (key: string) => key.startsWith('}_');
+// 防碰撞自动变量名
+export const autoKey = (index: number) => `}${index}{`; // 使用不合语法的反花括号
+const isAutoKey = (key: string) => key[0] === '}' && key[key.length - 1] === '{';
 
 let envCounter = 0;
 export class Environment {
-	public id: number;
-	private parent: Environment | undefined;
-	public variables: Map<string, EnvVariable> = new Map();
-	private functions: Map<string, AST.FunctionDeclaration> = new Map();
-	public orderedVariableNames: string[] = [];
+	public readonly id: number;
+	private readonly parent: Environment | undefined;
+	private readonly variables: Map<string, EnvVariable> = new Map();
+	private readonly functions: Map<string, AST.FunctionDeclaration> = new Map();
+	public readonly orderedVariableNames: string[] = [];
 
 	constructor(parent?: Environment) {
 		this.parent = parent;
 		this.id = envCounter++;
 		logger.debug(`[ENV] 新建环境 #${this.id} (上级: ${this.parent?.id ?? '无'})`);
+	}
+
+	public static markReferenceMoved(ref: ReferenceLink): void {
+		ref.scope.variables.get(ref.name)!.moved = true;
+	}
+
+	public static resolveValue(value: Evaluated): MeaoiuValue {
+		if (isSignal(value)) throw new Error(`不能在这里发送神秘信号喵！`);
+		while (isReferenceLink(value)) value = value.scope.variables.get(value.name)!.value;
+		return value;
+	}
+
+	public hasVariable(name: string): boolean {
+		return this.variables.has(name);
 	}
 
 	/**
@@ -64,11 +76,11 @@ export class Environment {
 		// 在最终位置赋值
 		let finalValue: VariableValue;
 		if (kind === AssignmentKind.REFERENCE) {
-			finalValue = isReferenceLink(value) ? value : this.resolveValue(value);
+			finalValue = isReferenceLink(value) ? value : Environment.resolveValue(value);
 		} else {
-			finalValue = this.resolveValue(value);
+			finalValue = Environment.resolveValue(value);
 			if (kind === AssignmentKind.MOVE) {
-				if (isReferenceLink(value)) markReferenceMoved(value); // 引用被移动，标记为「已移动」
+				if (isReferenceLink(value)) Environment.markReferenceMoved(value); // 引用被移动，标记为「已移动」
 			} else if (kind === AssignmentKind.COPY && finalValue instanceof Environment) {
 				finalValue = finalValue.createShallowCopy(); // 复制一个纸箱，实际上是创建一个「视图」
 			}
@@ -128,12 +140,6 @@ export class Environment {
 		return this.variables.has(name) ? this : this.parent?.findVariableScope(name);
 	}
 
-	public resolveValue(value: Evaluated): MeaoiuValue {
-		if (isSignal(value)) throw new Error(`不能在这里发送神秘信号喵！`);
-		while (isReferenceLink(value)) value = value.scope.variables.get(value.name)!.value;
-		return value;
-	}
-
 	public declareFunction(name: string, func: AST.FunctionDeclaration): void {
 		this.functions.set(name, func);
 	}
@@ -163,7 +169,7 @@ export class Environment {
 	/**
 	 * 创建一个「合并视图」。
 	 * 将创建一个新纸箱，该纸箱按顺序包含来自 A (this) 和 B (other) 的所有引用。
-	 * 自动生成的键（}_{）会被重命名以保证顺序。
+	 * 自动生成的键（}?{）会被重命名以保证顺序。
 	 * 用户定义的键如果冲突，A 优先。
 	 */
 	public createMergedView(other: Environment): Environment {
@@ -177,7 +183,7 @@ export class Environment {
 
 			if (isAutoKey(varName)) {
 				// 重命名自动键
-				const newAutoKey = `}_${autoIndexCounter++}{`;
+				const newAutoKey = autoKey(autoIndexCounter++);
 				newEnv.declareReference(newAutoKey, originalVarRef.scope, originalVarRef.name);
 			} else {
 				// 添加用户定义的键
@@ -192,7 +198,7 @@ export class Environment {
 
 			if (isAutoKey(varName)) {
 				// 总是添加并重命名自动键
-				const newAutoKey = `}_${autoIndexCounter++}{`;
+				const newAutoKey = autoKey(autoIndexCounter++);
 				newEnv.declareReference(newAutoKey, originalVarRef.scope, originalVarRef.name);
 			} else if (!addedKeys.has(varName)) {
 				// 用户定义的键，检查冲突

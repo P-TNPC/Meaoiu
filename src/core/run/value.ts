@@ -9,12 +9,12 @@ export type EnvVariable = { value: VariableValue; moved: boolean }; // 仅用于
 
 export const BREAK_SIGNAL = Symbol(); // '累了~'
 export const CONTINUE_SIGNAL = Symbol(); //'偷袭~'
-// 可套娃的带值信号，将未实现的想法上交喵（动作 [#动作~#]~）
+// 可套娃的带值信号，以囊泡运输的方式将未实现的想法上交喵（动作 [#动作~#]~）
 export class ReturnValue {
-	constructor(public value: Evaluated) {}
+	constructor(public readonly value: Evaluated) {}
 } // '叼回来 [值]~'
 export class LoopValue {
-	constructor(public value: Evaluated) {}
+	constructor(public readonly value: Evaluated) {}
 } // '偷袭 <值>~'
 
 type Signal = typeof BREAK_SIGNAL | typeof CONTINUE_SIGNAL | ReturnValue | LoopValue;

@@ -82,9 +82,9 @@ export class Parser {
 	private readonly tokens: Token[];
 	private readonly MODE: ParseMode;
 	private readonly MAX_POS: number;
+	private readonly blockDepth = new Int16Array(2); // 0: 想法, 1: 纸箱
+	private readonly errors: MeaoiuError[] = [];
 	private position = 0;
-	private blockDepth = new Int16Array(2); // 0: 想法, 1: 纸箱
-	private errors: MeaoiuError[] = [];
 
 	// 悄悄话缓存：advance / drainCommentsAhead 会把遇到的 COMMENT 放进这里
 	private commentBuffer: Token[] = [];
@@ -462,7 +462,7 @@ export class Parser {
 				// 以下状态理论不可达：
 				case 0b011: // 0 算术模式|1 有算术|1 有比较
 				case 0b111: // 1 比较模式|1 有算术|1 有比较
-					throw errorFrom(token, '世界崩坏喵: 你不该看到这个喵！');
+					throw errorFrom(token, '世界崩坏喵: 物理学不存在了喵！');
 			}
 
 			operators.push(this.advance());

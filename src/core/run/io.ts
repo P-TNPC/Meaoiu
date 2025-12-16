@@ -4,14 +4,14 @@
 export type MeaoiuRuntimeIO = {
 	print: (args: unknown[]) => void;
 	prompt: (question: string) => Promise<string>;
-}
+};
 
 // 工厂函数的配置项
 export type IOConfig = {
 	onPrint: (formattedString: string) => void; // 底层打印回调
 	onPrompt: (question: string) => Promise<string>; // 底层提问回调
 	useColor?: boolean; // 是否上色
-}
+};
 
 // ANSI 颜色代码
 const colors = {
@@ -26,6 +26,7 @@ function toMeaoiuString(value: unknown): string {
 	if (value === true) return '好喵';
 	if (value === false) return '坏喵';
 	if (value === null || value === undefined) return '空碗';
+	if (value !== value) return '不懂';
 	return String(value);
 }
 

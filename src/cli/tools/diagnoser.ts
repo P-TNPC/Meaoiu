@@ -21,7 +21,7 @@ export function diagnose(sourceCode: string, filePath: string): void {
 			return acc;
 		}, []);
 
-		if (noErrorTypes.length) console.log(`[诊断器] ✅ 未发现任何${noErrorTypes.join('或')}错误。`);
+		noErrorTypes.length && console.log(`[诊断器] ✅ 未发现任何${noErrorTypes.join('或')}错误。`);
 	} catch (err) {
 		console.error('\n-----------------------------');
 		console.error(formatError(err, sourceCode, filePath));

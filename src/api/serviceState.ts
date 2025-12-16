@@ -5,38 +5,38 @@ import { ParseMode, Parser, type ParseResult } from '../core/parser.js';
 import { tokenize } from '../core/tokenizer.js';
 import { analyzeSymbols, type AnalyzeResult } from './utils/symbolAnalyzer.js';
 
-type DocState = { version: number; getText: () => string };
+type DocState = { version: number; getText: () => string }; // 适配 VsCode 格式
 
 export class StateManager {
 	#useOnebased: boolean;
-	private stateCache: WeakMap<DocState, ServiceState> = new WeakMap();
+	#stateCache: WeakMap<DocState, ServiceState> = new WeakMap();
 
 	constructor(useOnebased = true) {
 		this.#useOnebased = useOnebased;
 	}
 
-	public makeDocState(version: number, sourceCode: string): DocState {
+	public static makeDocState(version: number, sourceCode: string): DocState {
 		return { version, getText: () => sourceCode };
 	}
 
 	public updateState(doc: DocState): ServiceState {
 		const state = new ServiceState(doc.version, doc.getText(), this.#useOnebased);
-		this.stateCache.set(doc, state);
+		this.#stateCache.set(doc, state);
 		return state;
 	}
 
 	public useState(doc: DocState): ServiceState {
-		let state = this.stateCache.get(doc);
+		let state = this.#stateCache.get(doc);
 		if (doc.version !== state?.version) state = this.updateState(doc);
 		return state;
 	}
 
 	public getParseResult(doc: DocState): ParseResult | undefined {
-		return this.stateCache.get(doc)?.parseResult;
+		return this.#stateCache.get(doc)?.parseResult;
 	}
 
 	public getAnalyzeResult(doc: DocState): AnalyzeResult | undefined {
-		return this.stateCache.get(doc)?.analyzeResult;
+		return this.#stateCache.get(doc)?.analyzeResult;
 	}
 }
 
@@ -52,15 +52,15 @@ export class ServiceState {
 		this.#parseResult = new Parser(tokens, ParseMode.TOLERANT).parse();
 	}
 
-	get version() {
+	get version(): number {
 		return this.#version;
 	}
 
-	get parseResult() {
+	get parseResult(): ParseResult {
 		return this.#parseResult;
 	}
 
-	get analyzeResult() {
+	get analyzeResult(): AnalyzeResult {
 		this.#analyzeResult ??= analyzeSymbols(this.parseResult.program, MeaoiuBuiltInNames);
 		return this.#analyzeResult;
 	}
