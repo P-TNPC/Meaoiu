@@ -266,6 +266,11 @@ export async function evaluate(
 				const { identifier, initialization } = node;
 				env.declare(identifier.symbol); // 声明变量名
 				// 若有初始化部分，则执行以赋值
+				/*
+				标准写法是「蹭名~名就是值~」喵，
+				打成「蹭名就是值~」这种读不顺的写法只是少写两个字喵，
+				因此「蹭甲就是甲~」不会引用别处的「甲」喵
+				*/
 				return initialization ? await evaluate(initialization, env, builtIns, boundaryEnv) : null;
 			}
 			case NodeType.AssignmentStatement: {

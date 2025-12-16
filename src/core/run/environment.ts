@@ -76,7 +76,11 @@ export class Environment {
 		// 在最终位置赋值
 		let finalValue: VariableValue;
 		if (kind === AssignmentKind.REFERENCE) {
-			finalValue = isReferenceLink(value) ? value : Environment.resolveValue(value);
+			finalValue =
+				isReferenceLink(value) &&
+				(finalTargetScope !== value.scope || finalTargetName !== value.name) /* 防御循环引用 */
+					? value
+					: Environment.resolveValue(value);
 		} else {
 			finalValue = Environment.resolveValue(value);
 			if (kind === AssignmentKind.MOVE) {
@@ -91,7 +95,7 @@ export class Environment {
 			finalValue
 		);
 
-		return { isReference: true, scope: finalTargetScope, name: finalTargetName };
+		return finalTargetScope.lookup(finalTargetName);
 	}
 
 	public lookup(name: string | number, _originalName?: string, checkMoved = true): ReferenceLink {
