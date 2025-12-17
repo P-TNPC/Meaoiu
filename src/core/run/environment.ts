@@ -48,11 +48,12 @@ export class Environment {
 	/**
 	 * 声明新变量（不包含赋值）。
 	 */
-	public declare(name: string): void {
+	public declare(name: string): ReferenceLink {
 		if (this.variables.has(name)) throw new Error(`变量「${name}」已经被“蹭”过一次了喵！`);
 		logger.debug(`[ENV #${this.id}] 声明: 变量「${name}」`);
 		this.variables.set(name, { value: null, moved: false });
 		this.orderedVariableNames.push(name);
+		return this.lookup(name);
 	}
 
 	/**
@@ -98,46 +99,32 @@ export class Environment {
 		return finalTargetScope.lookup(finalTargetName);
 	}
 
-	public lookup(name: string | number, _originalName?: string, checkMoved = true): ReferenceLink {
-		let resolvedName = '';
-
-		// 1. 解析当前要查找的名字
-		if (typeof name === 'number') {
-			if (name < 1 || name > this.orderedVariableNames.length) throw new Error(`喵呜！找不到「${name}」号玩具喵！`);
-			resolvedName = this.orderedVariableNames[name - 1]!;
-		} else {
-			resolvedName = name;
-		}
-
-		// 2. 确定「源头」名字
-		// 如果 _originalName 未定义, 说明这是查询的第一环,「源头」就是刚解析出的名字
-		const originalName = _originalName ?? resolvedName;
-
-		// 3. 查找符号
-		const scope = this.findVariableScope(resolvedName);
+	public lookup(name: string, originalName /* 未定源时为第一环查询 */ = name, checkMoved = true): ReferenceLink {
+		// 查找符号
+		const scope = this.findVariableScope(name);
 		if (!scope) {
-			const errorMessage = this.findFunction(resolvedName)
-				? `是不是想把${typeNames[MeaoiuType.FUNCTION]}「${resolvedName}」当成玩具喵？`
-				: `没找到叫做「${resolvedName}」的玩具，是不是被你藏起来了喵？`;
+			const errorMessage = this.findFunction(name)
+				? `是不是想把${typeNames[MeaoiuType.FUNCTION]}「${name}」当成玩具喵？`
+				: `没找到叫做「${name}」的玩具，是不是被你藏起来了喵？`;
 			throw new Error(`咦？${errorMessage}`);
 		}
-		const { value, moved } = scope.variables.get(resolvedName)!;
+		const { value, moved } = scope.variables.get(name)!;
 
-		// 4. 检查「已移动」状态
+		// 检查「已移动」状态
 		if (moved && checkMoved) {
 			const errorMessage = isAutoKey(originalName)
 				? `纸箱里的「${this.orderedVariableNames.indexOf(originalName) + 1}」号玩具不见了，一定是被谁拿走了喵！`
-				: originalName === resolvedName
+				: originalName === name
 				? `藏在「${originalName}」里的东西被拿走了，现在是只空碗喵！`
-				: `碰不到「${originalName}」，因为它的本体「${resolvedName}」被拿走了喵！`; // 起终点不一致，报告起终点
+				: `碰不到「${originalName}」，因为它的本体「${name}」被拿走了喵！`; // 起终点不一致，报告起终点
 			throw new Error(`喵呜！${errorMessage}`);
 		}
-		logger.debug(`[ENV #${this.id}] 查找: 在环境 #${scope.id} 中找到「${resolvedName}」`);
+		logger.debug(`[ENV #${this.id}] 查找: 在环境 #${scope.id} 中找到「${name}」`);
 
-		// 5. 递归查找（继续传递 originalName）
+		// 递归查找（继续传递 originalName）
 		if (isReferenceLink(value)) return value.scope.lookup(value.name, originalName, checkMoved);
 
-		return { isReference: true, scope, name: resolvedName };
+		return { isReference: true, scope, name };
 	}
 
 	private findVariableScope(name: string): Environment | undefined {

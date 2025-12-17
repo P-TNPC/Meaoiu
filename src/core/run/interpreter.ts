@@ -78,9 +78,9 @@ export async function evaluate(
 							autoIndexCounter = await _evaluateCollectionElement(
 								stmt,
 								blockEnv,
-								autoIndexCounter,
 								builtIns,
-								boundaryEnv
+								boundaryEnv,
+								autoIndexCounter
 							);
 						}
 					}
@@ -111,18 +111,11 @@ export async function evaluate(
 					throw errorFrom(objectNode, `运行错误喵: 从${typeNames[MeaoiuType.COLLECTION]}里拿东西才能用「@」喵！`);
 				}
 
-				const propValue = resolveValue(await evaluate(propertyNode, env, builtIns, boundaryEnv));
+				const name = await _evaluateMemberName(propertyNode, env, builtIns, boundaryEnv, collection, index => {
+					throw errorFrom(propertyNode, `运行错误喵: 喵呜！找不到「${index}」号玩具喵！`);
+				});
 
-				if (typeof propValue !== 'number' && typeof propValue !== 'string') {
-					throw errorFrom(
-						propertyNode,
-						`运行错误喵: ${typeNames[MeaoiuType.COLLECTION]}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${
-							typeNames[MeaoiuType.STRING]
-						}喵！`
-					);
-				}
-
-				return collection.lookup(propValue);
+				return collection.lookup(name);
 			}
 			case NodeType.SequenceExpression: {
 				const { sections, operators } = node;
@@ -264,67 +257,18 @@ export async function evaluate(
 			}
 			case NodeType.VariableDeclaration: {
 				const { identifier, initialization } = node;
-				env.declare(identifier.symbol); // 声明变量名
-				// 若有初始化部分，则执行以赋值
-				/*
-				标准写法是「蹭名~名就是值~」喵，
-				打成「蹭名就是值~」这种读不顺的写法只是少写两个字喵，
-				因此「蹭甲就是甲~」不会引用别处的「甲」喵
-				*/
-				return initialization ? await evaluate(initialization, env, builtIns, boundaryEnv) : null;
+				const symbol = identifier.symbol;
+				// 若有初始化部分，则执行以声明并赋值
+				return initialization
+					? _evaluateAssignment(initialization, env, builtIns, boundaryEnv, () => env.declare(symbol))
+					: env.declare(symbol); // 声明变量名
 			}
-			case NodeType.AssignmentStatement: {
-				const { value: assignValue, assignee, kind } = node;
-				const value = await evaluate(assignValue, env, builtIns, boundaryEnv);
-
-				// 目标是 a@b 这种形式
-				if (assignee.type === NodeType.MemberAccessExpression) {
-					const { object: objectNode, property: propertyNode } = assignee;
-					// 找到纸箱
-					const collection = resolveValue(await evaluate(objectNode, env, builtIns, boundaryEnv));
-					if (!(collection instanceof Environment)) {
-						throw errorFrom(objectNode, `运行错误喵: 只能给${typeNames[MeaoiuType.COLLECTION]}的成员赋值喵！`);
-					}
-
-					// 找到索引/键
-					const propValue = resolveValue(await evaluate(propertyNode, env, builtIns, boundaryEnv));
-					let key: string;
-					switch (typeof propValue) {
-						case 'string': // 索引是字符串，直接用
-							key = propValue;
-							break;
-						case 'number': // 索引是数字
-							// 数字索引超出范围，转为字符串键
-							if (propValue < 1 || propValue > collection.length) key = String(propValue);
-							// 索引存在，用它在有序列表里的名字
-							else key = collection.orderedVariableNames[propValue - 1]!;
-							break;
-						default:
-							throw errorFrom(
-								propertyNode,
-								`运行错误喵: ${typeNames[MeaoiuType.COLLECTION]}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${
-									typeNames[MeaoiuType.STRING]
-								}喵！`
-							);
-					}
-
-					// 检查是“赋值”还是“扩充”
-					if (!collection.hasVariable(key)) {
-						logger.debug(`[ENV #${collection.id}] 纸箱扩充: '${key}'`);
-						collection.declare(key); // 声明新键
-					}
-
-					return collection.assign(key, value, kind);
-				}
-				// 目标是 a 这种普通变量
-				const target = await evaluate(assignee, env, builtIns, boundaryEnv);
-				if (!isReferenceLink(target)) throw errorFrom(assignee, `运行错误喵: 赋值的左边必须是一个碗喵！`);
-				return target.scope.assign(target.name, value, kind);
-			}
+			case NodeType.AssignmentStatement:
+				return _evaluateAssignment(node, env, builtIns, boundaryEnv);
 			case NodeType.IfExpression: {
 				const isTrue = resolveValue(await evaluate(node.condition, env, builtIns, boundaryEnv));
-				if (isTrue) return await evaluate(node.consequent, env, builtIns, boundaryEnv);
-				else if (node.alternate) return await evaluate(node.alternate, env, builtIns, boundaryEnv);
+				if (isTrue) return evaluate(node.consequent, env, builtIns, boundaryEnv);
+				else if (node.alternate) return evaluate(node.alternate, env, builtIns, boundaryEnv);
 				return null;
 			}
 			case NodeType.LoopExpression: {
@@ -457,7 +401,7 @@ export async function evaluate(
 				}
 			}
 			case NodeType.ExpressionStatement:
-				return await evaluate(node.expression, env, builtIns, boundaryEnv);
+				return evaluate(node.expression, env, builtIns, boundaryEnv);
 			case NodeType.ErrorNode:
 				throw new MeaoiuError(node);
 			default: // 此处已推断为不可达
@@ -477,9 +421,9 @@ export async function evaluate(
 async function _evaluateCollectionElement(
 	stmt: AST.ExpressionStatement,
 	blockEnv: Environment,
-	autoIndexCounter: number,
 	builtIns: MeaoiuBuiltIns,
-	boundaryEnv: BoundaryEnv
+	boundaryEnv: BoundaryEnv,
+	autoIndexCounter: number
 ): Promise<number> {
 	const expr = stmt.expression;
 
@@ -507,4 +451,69 @@ async function _evaluateCollectionElement(
 	blockEnv.assign(name, valueToAssign, kind);
 
 	return autoIndexCounter;
+}
+
+async function _evaluateAssignment(
+	stmt: AST.AssignmentStatement,
+	env: Environment,
+	builtIns: MeaoiuBuiltIns,
+	boundaryEnv: BoundaryEnv,
+	preExecute?: () => void
+): Promise<ReturnType<Environment['assign']>> {
+	const { value: assignValue, assignee, kind } = stmt;
+	const value = await evaluate(assignValue, env, builtIns, boundaryEnv);
+
+	// 目标是 a@b 这种形式
+	if (assignee.type === NodeType.MemberAccessExpression) {
+		const { object: objectNode, property: propertyNode } = assignee;
+		// 找到纸箱
+		const collection = resolveValue(await evaluate(objectNode, env, builtIns, boundaryEnv));
+		if (!(collection instanceof Environment)) {
+			throw errorFrom(objectNode, `运行错误喵: 只能给${typeNames[MeaoiuType.COLLECTION]}的成员赋值喵！`);
+		}
+
+		const name = await _evaluateMemberName(propertyNode, env, builtIns, boundaryEnv, collection, String);
+
+		// 检查是“赋值”还是“扩充”
+		if (!collection.hasVariable(name)) {
+			logger.debug(`[ENV #${collection.id}] 纸箱扩充: '${name}'`);
+			collection.declare(name); // 声明新键
+		}
+
+		return collection.assign(name, value, kind);
+	}
+
+	preExecute?.();
+
+	// 目标是 a 这种普通变量
+	const target = await evaluate(assignee, env, builtIns, boundaryEnv);
+	if (!isReferenceLink(target)) throw errorFrom(assignee, `运行错误喵: 赋值的左边必须是一个碗喵！`);
+	return target.scope.assign(target.name, value, kind);
+}
+
+async function _evaluateMemberName(
+	prop: AST.Expression,
+	env: Environment,
+	builtIns: MeaoiuBuiltIns,
+	boundaryEnv: BoundaryEnv,
+	collection: Environment,
+	catchOutRangeIndex: (index: number) => string
+): Promise<string> {
+	// 找到索引/键
+	const propKey = resolveValue(await evaluate(prop, env, builtIns, boundaryEnv));
+
+	switch (typeof propKey) {
+		case 'string': // 字符串键，直接用
+			return propKey;
+		case 'number': // 数字索引
+			return propKey < 1 || collection.length < propKey
+				? catchOutRangeIndex(propKey) // 数字索引超出范围
+				: collection.orderedVariableNames[propKey - 1]!; // 索引存在，用它在有序列表里的名字
+	}
+	throw errorFrom(
+		prop,
+		`运行错误喵: ${typeNames[MeaoiuType.COLLECTION]}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${
+			typeNames[MeaoiuType.STRING]
+		}喵！`
+	);
 }
