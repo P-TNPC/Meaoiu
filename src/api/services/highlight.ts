@@ -1,6 +1,6 @@
 // src/api/services/highlight.ts
 
-import { NodeType } from '../../core/ast.js';
+import { NodeKind } from '../../core/ast.js';
 import type { ServiceState } from '../serviceState.js';
 import { buildParentMap } from '../utils/astUtils.js';
 import { SymbolKind, SymbolTag } from '../utils/symbolTable.js';
@@ -12,7 +12,7 @@ const tokenTypes = ['variable', 'parameter', 'function'];
 const tokenModifiers = ['declaration', 'modification', 'defaultLibrary', 'deprecated'];
 export const legend = { tokenTypes, tokenModifiers };
 
-const typeIndexMap = {
+const tokenTypeIndexMap = {
 	[SymbolKind.VARIABLE]: 0,
 	[SymbolKind.PARAMETER]: 1,
 	[SymbolKind.FUNCTION]: 2,
@@ -27,7 +27,7 @@ export function getHighlightTokens(serviceState: ServiceState): HighlightToken[]
 	const { symbolMap } = serviceState.analyzeResult;
 
 	symbolMap.forEach(symbolInfo => {
-		const typeIndex = typeIndexMap[symbolInfo.kind];
+		const tokenTypeIndex = tokenTypeIndexMap[symbolInfo.kind];
 
 		// 收集声明
 		symbolInfo.declarations.forEach(dec => {
@@ -38,7 +38,7 @@ export function getHighlightTokens(serviceState: ServiceState): HighlightToken[]
 				line: dec.line,
 				col: dec.col,
 				length: symbolInfo.name.length,
-				tokenType: typeIndex,
+				tokenType: tokenTypeIndex,
 				tokenModifiers: modBitmask,
 			});
 		});
@@ -49,7 +49,7 @@ export function getHighlightTokens(serviceState: ServiceState): HighlightToken[]
 			if (symbolInfo.isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
 			if (symbolInfo.tag === SymbolTag.DECAYED) modifiers.push(tokenModifiers.indexOf('deprecated'));
 			const parent = parentMap.get(ref);
-			if (parent?.type === NodeType.AssignmentStatement && parent.assignee === ref) {
+			if (parent?.kind === NodeKind.AssignmentStatement && parent.assignee === ref) {
 				modifiers.push(tokenModifiers.indexOf('modification'));
 			}
 			const modBitmask = modifiers.reduce((a, b) => a | (1 << b), 0);
@@ -57,7 +57,7 @@ export function getHighlightTokens(serviceState: ServiceState): HighlightToken[]
 				line: ref.line,
 				col: ref.col,
 				length: ref.symbol.length,
-				tokenType: typeIndex,
+				tokenType: tokenTypeIndex,
 				tokenModifiers: modBitmask,
 			});
 		});

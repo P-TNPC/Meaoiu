@@ -1,9 +1,10 @@
 // src/core/run/interpreter.ts
 
 import type * as AST from '../ast.js';
-import { AssignmentKind, LogicalOperator, NodeType } from '../ast.js';
+import { AssignmentOperator, LogicalOperator, NodeKind } from '../ast.js';
 import { checkArgsForBuiltIn, isBuiltInFunctionName, type MeaoiuBuiltIns } from '../builtIns.js';
-import { errorFrom, MeaoiuError } from '../error.js';
+import { errorFrom, MeaoiuError, Phase } from '../error.js';
+import type { Token } from '../tokenizer.js';
 import {
 	checkArithmeticOperation,
 	checkComparisonOperation,
@@ -16,19 +17,19 @@ import { autoKey, Environment } from './environment.js';
 import logger from './logger.js';
 import { BREAK_SIGNAL, CONTINUE_SIGNAL, type Evaluated, isReferenceLink, isSignal, LoopValue, ReturnValue } from './value.js';
 
-type BoundaryEnv = Partial<Record<(AST.ReturnStatement | AST.AmbushStatement)['type'], Environment>>;
-const enum NewEnvType {
+type BoundaryEnv = Partial<Record<(AST.ReturnStatement | AST.AmbushStatement)['kind'], Environment>>;
+const enum NewEnvMode {
 	NORMAL,
 	FUNC,
 	LOOP,
 }
 
 const ReturnOrAmbush = {
-	[NodeType.ReturnStatement]: {
+	[NodeKind.ReturnStatement]: {
 		emptySignal: new ReturnValue(null),
 		signalWith: value => new ReturnValue(value),
 	},
-	[NodeType.AmbushStatement]: {
+	[NodeKind.AmbushStatement]: {
 		emptySignal: CONTINUE_SIGNAL,
 		signalWith: value => new LoopValue(value),
 	},
@@ -38,49 +39,50 @@ const ReturnOrAmbush = {
 >;
 
 const resolveValue = Environment.resolveValue;
+const runtimeErrorFrom = (ele: AST.Node | Token, message: string) => errorFrom(ele, message, Phase.RUNTIME);
 
 export async function evaluate(
 	node: AST.Node,
 	env: Environment,
 	builtIns: MeaoiuBuiltIns,
 	boundaryEnv: BoundaryEnv,
-	newEnvType: NewEnvType = NewEnvType.NORMAL
+	newEnvMode: NewEnvMode = NewEnvMode.NORMAL,
 ): Promise<Evaluated> {
 	try {
-		switch (node.type) {
-			case NodeType.NumericLiteral:
-			case NodeType.StringLiteral:
-			case NodeType.BooleanLiteral:
+		switch (node.kind) {
+			case NodeKind.NumericLiteral:
+			case NodeKind.StringLiteral:
+			case NodeKind.BooleanLiteral:
 				return node.value;
-			case NodeType.NullLiteral:
+			case NodeKind.NullLiteral:
 				return null;
-			case NodeType.Identifier:
+			case NodeKind.Identifier:
 				return env.lookup(node.symbol);
-			case NodeType.Program: {
+			case NodeKind.Program: {
 				let lastEvaluatedInProgram: Evaluated = null;
 				for (const statement of node.body) {
 					lastEvaluatedInProgram = await evaluate(statement, env, builtIns, boundaryEnv);
 				}
 				return lastEvaluatedInProgram;
 			}
-			case NodeType.BlockExpression: {
+			case NodeKind.BlockExpression: {
 				const { isCollection, body } = node;
-				const blockEnv = newEnvType !== NewEnvType.NORMAL ? env : new Environment(env);
+				const blockEnv = newEnvMode !== NewEnvMode.NORMAL ? env : new Environment(env);
 
 				// --- 纸箱的特殊求值规则 ---
 				if (isCollection) {
 					let autoIndexCounter = 0; // 自动索引计数器
 					for (const stmt of body) {
 						// 声明语句
-						if (stmt.type === NodeType.VariableDeclaration) await evaluate(stmt, blockEnv, builtIns, boundaryEnv);
+						if (stmt.kind === NodeKind.VariableDeclaration) await evaluate(stmt, blockEnv, builtIns, boundaryEnv);
 						// 调用辅助函数处理纯表达式
-						else if (stmt.type === NodeType.ExpressionStatement) {
+						else if (stmt.kind === NodeKind.ExpressionStatement) {
 							autoIndexCounter = await _evaluateCollectionElement(
 								stmt,
 								blockEnv,
 								builtIns,
 								boundaryEnv,
-								autoIndexCounter
+								autoIndexCounter,
 							);
 						}
 					}
@@ -94,30 +96,30 @@ export async function evaluate(
 					if (isSignal(lastEvaluated)) return lastEvaluated;
 				}
 
-				if (newEnvType !== NewEnvType.NORMAL) return null; // 非普通环境只靠信号返回
+				if (newEnvMode !== NewEnvMode.NORMAL) return null; // 非普通环境只靠信号返回
 
 				if (isReferenceLink(lastEvaluated) && lastEvaluated.scope === blockEnv) {
 					const lastStmtNode = body.at(-1) ?? node;
-					throw errorFrom(lastStmtNode, `运行错误喵: 不能让里面玩具「${lastEvaluated.name}」跑出去喵！`);
+					throw runtimeErrorFrom(lastStmtNode, `不能让里面玩具「${lastEvaluated.name}」跑出去喵！`);
 				}
 
 				return lastEvaluated;
 			}
-			case NodeType.MemberAccessExpression: {
+			case NodeKind.MemberAccessExpression: {
 				const { object: objectNode, property: propertyNode } = node;
 				const collection = resolveValue(await evaluate(objectNode, env, builtIns, boundaryEnv));
 
 				if (!(collection instanceof Environment)) {
-					throw errorFrom(objectNode, `运行错误喵: 从${typeNames[MeaoiuType.COLLECTION]}里拿东西才能用「@」喵！`);
+					throw runtimeErrorFrom(objectNode, `从${typeNames[MeaoiuType.COLLECTION]}里拿东西才能用「@」喵！`);
 				}
 
 				const name = await _evaluateMemberName(propertyNode, env, builtIns, boundaryEnv, collection, index => {
-					throw errorFrom(propertyNode, `运行错误喵: 喵呜！找不到「${index}」号玩具喵！`);
+					throw runtimeErrorFrom(propertyNode, `喵呜！找不到「${index}」号玩具喵！`);
 				});
 
 				return collection.lookup(name);
 			}
-			case NodeType.SequenceExpression: {
+			case NodeKind.SequenceExpression: {
 				const { sections, operators } = node;
 				// 动态检查，可以 AnyScript 喵
 				let accVal: any = resolveValue(await evaluate(sections[0]!, env, builtIns, boundaryEnv));
@@ -140,7 +142,7 @@ export async function evaluate(
 					const nextType = getMeaoiuType(nextVal);
 
 					const error = checkArithmeticOperation(op, accType, nextType);
-					if (error) throw errorFrom(opToken, `运行错误喵: ${error}`);
+					if (error) throw runtimeErrorFrom(opToken, `${error}`);
 
 					switch (op) {
 						case '+':
@@ -157,12 +159,12 @@ export async function evaluate(
 							accVal /= nextVal;
 							break;
 						default:
-							throw errorFrom(opToken, `运行错误喵: 这个「${op}」这是什么节喵？`);
+							throw runtimeErrorFrom(opToken, `这个「${op}」这是什么节喵？`);
 					}
 				}
 				return accVal;
 			}
-			case NodeType.ArithmeticExpression: {
+			case NodeKind.ArithmeticExpression: {
 				const { operator: op, left, right } = node;
 
 				const leftVal: any = resolveValue(await evaluate(left, env, builtIns, boundaryEnv));
@@ -172,7 +174,7 @@ export async function evaluate(
 				const rightType = getMeaoiuType(rightVal);
 
 				const error = checkArithmeticOperation(op, leftType, rightType);
-				if (error) throw errorFrom(node, `运行错误喵: ${error}`);
+				if (error) throw runtimeErrorFrom(node, `${error}`);
 
 				switch (op) {
 					case '+':
@@ -184,9 +186,9 @@ export async function evaluate(
 					case '/':
 						return leftVal / rightVal;
 				}
-				throw errorFrom(node, `运行错误喵: 「${op}」是两块钱的运算符喵?`);
+				throw runtimeErrorFrom(node, `「${op}」是两块钱的运算符喵?`);
 			}
-			case NodeType.ComparisonExpression: {
+			case NodeKind.ComparisonExpression: {
 				const { expressions, operators } = node;
 
 				let overallResult = true;
@@ -201,7 +203,7 @@ export async function evaluate(
 					const rightType = getMeaoiuType(currentRightVal);
 
 					const error = checkComparisonOperation(op, leftType, rightType);
-					if (error) throw errorFrom(opToken, `运行错误喵: ${error}`);
+					if (error) throw runtimeErrorFrom(opToken, `${error}`);
 
 					// --- 执行单个比较 ---
 					let currentResult = false;
@@ -225,7 +227,7 @@ export async function evaluate(
 							currentResult = currentLeftVal <= currentRightVal;
 							break;
 						default:
-							throw errorFrom(opToken, `运行错误喵: 不会用「${op}」比喵~`);
+							throw runtimeErrorFrom(opToken, `不会用「${op}」比喵~`);
 					}
 
 					if (!currentResult) {
@@ -238,7 +240,7 @@ export async function evaluate(
 				}
 				return overallResult;
 			}
-			case NodeType.LogicalExpression: {
+			case NodeKind.LogicalExpression: {
 				const { operator: op, left, right } = node;
 				const leftVal = resolveValue(await evaluate(left, env, builtIns, boundaryEnv));
 				switch (op) {
@@ -252,10 +254,10 @@ export async function evaluate(
 						return !(leftVal && resolveValue(await evaluate(right, env, builtIns, boundaryEnv)));
 					default: // 理论不可达
 						const _o: never = op;
-						throw errorFrom(node, `世界崩坏喵: 你发现了「${_o}」悖论喵~`);
+						throw errorFrom(node, `你发现了「${_o}」悖论喵~`, Phase.INVARIANT);
 				}
 			}
-			case NodeType.VariableDeclaration: {
+			case NodeKind.VariableDeclaration: {
 				const { identifier, initialization } = node;
 				const symbol = identifier.symbol;
 				// 若有初始化部分，则执行以声明并赋值
@@ -263,15 +265,15 @@ export async function evaluate(
 					? _evaluateAssignment(initialization, env, builtIns, boundaryEnv, () => env.declare(symbol))
 					: env.declare(symbol); // 声明变量名
 			}
-			case NodeType.AssignmentStatement:
+			case NodeKind.AssignmentStatement:
 				return _evaluateAssignment(node, env, builtIns, boundaryEnv);
-			case NodeType.IfExpression: {
+			case NodeKind.IfExpression: {
 				const isTrue = resolveValue(await evaluate(node.condition, env, builtIns, boundaryEnv));
 				if (isTrue) return evaluate(node.consequent, env, builtIns, boundaryEnv);
 				else if (node.alternate) return evaluate(node.alternate, env, builtIns, boundaryEnv);
 				return null;
 			}
-			case NodeType.LoopExpression: {
+			case NodeKind.LoopExpression: {
 				const body = node.body;
 				while (true) {
 					const loopEnv = new Environment(env);
@@ -279,8 +281,8 @@ export async function evaluate(
 						body,
 						loopEnv,
 						builtIns,
-						{ ...boundaryEnv, [NodeType.AmbushStatement]: loopEnv },
-						NewEnvType.LOOP
+						{ ...boundaryEnv, [NodeKind.AmbushStatement]: loopEnv },
+						NewEnvMode.LOOP,
 					);
 
 					if (result === CONTINUE_SIGNAL) continue; // '偷袭~' -> 继续下次循环
@@ -291,35 +293,35 @@ export async function evaluate(
 				}
 				return null; // '累了' 退出后，循环表达式返回“空碗”
 			}
-			case NodeType.BreakStatement:
+			case NodeKind.BreakStatement:
 				return BREAK_SIGNAL;
-			case NodeType.AmbushStatement:
-			case NodeType.ReturnStatement: {
-				const { type, argument } = node;
-				if (!argument) return ReturnOrAmbush[type].emptySignal;
+			case NodeKind.AmbushStatement:
+			case NodeKind.ReturnStatement: {
+				const { kind, argument } = node;
+				if (!argument) return ReturnOrAmbush[kind].emptySignal;
 
-				if (argument.type === NodeType.Identifier) {
+				if (argument.kind === NodeKind.Identifier) {
 					const varName = argument.symbol;
 					const varScope = env.lookup(varName).scope;
 
-					if (varScope.isInsideOf(boundaryEnv[type])) {
-						throw errorFrom(argument, `运行错误喵: 不能把里面的临时玩具「${varName}」带走喵，它离开这里就消失了！`);
+					if (varScope.isInsideOf(boundaryEnv[kind])) {
+						throw runtimeErrorFrom(argument, `不能把里面的临时玩具「${varName}」带走喵，它离开这里就消失了！`);
 					}
 				}
 
 				const value = await evaluate(argument, env, builtIns, boundaryEnv);
 
 				if (isSignal(value)) logger.warn(`[ENV #${env.id}] 携带多层信号，将继续向上传递。`);
-				return ReturnOrAmbush[type].signalWith(value);
+				return ReturnOrAmbush[kind].signalWith(value);
 			}
-			case NodeType.FunctionDeclaration:
-				return env.declareFunction(node.name.symbol, node), null;
-			case NodeType.CallExpression: {
+			case NodeKind.FunctionDeclaration:
+				return (env.declareFunction(node.name.symbol, node), null);
+			case NodeKind.CallExpression: {
 				const { callee, args: argsNode } = node;
 				const funcName = callee.symbol;
 
 				const argsCollection = resolveValue(await evaluate(argsNode, env, builtIns, boundaryEnv));
-				if (!(argsCollection instanceof Environment)) throw errorFrom(argsNode, `运行错误喵: 贡品要装好喵！`);
+				if (!(argsCollection instanceof Environment)) throw runtimeErrorFrom(argsNode, `贡品要装好喵！`);
 
 				if (isBuiltInFunctionName(funcName)) {
 					const evalArgs: MeaoiuValue[] = [];
@@ -330,31 +332,31 @@ export async function evaluate(
 					const builtIn = builtIns[funcName];
 
 					const error = checkArgsForBuiltIn(builtIn, evalArgs);
-					if (error) throw errorFrom(argsNode, `运行错误喵: ${error}`);
+					if (error) throw runtimeErrorFrom(argsNode, `${error}`);
 
 					return builtIn.function(evalArgs);
 				}
 
 				const func = env.findFunction(funcName);
 				if (!func) {
-					throw errorFrom(callee, `运行错误喵: 没有叫「${funcName}」的${typeNames[MeaoiuType.FUNCTION]}喵！`);
+					throw runtimeErrorFrom(callee, `没有叫「${funcName}」的${typeNames[MeaoiuType.FUNCTION]}喵！`);
 				}
 
 				// 从函数定义的参数块中，按顺序提取出参数的名字
 				const paramNames = func.parameters.body
 					.map(stmt => {
-						if (stmt.type === NodeType.VariableDeclaration) return stmt.identifier.symbol;
-						if (stmt.type === NodeType.ExpressionStatement && stmt.expression.type === NodeType.Identifier) {
+						if (stmt.kind === NodeKind.VariableDeclaration) return stmt.identifier.symbol;
+						if (stmt.kind === NodeKind.ExpressionStatement && stmt.expression.kind === NodeKind.Identifier) {
 							return stmt.expression.symbol;
 						}
-						throw errorFrom(stmt, `运行错误喵: 贡品不能是奇怪的样子 ${stmt.type} 喵！`);
+						throw runtimeErrorFrom(stmt, `贡品不能是奇怪的样子 ${stmt.kind} 喵！`);
 					})
 					.filter(Boolean);
 
 				if (argsCollection.length < paramNames.length) {
-					throw errorFrom(
+					throw runtimeErrorFrom(
 						argsNode,
-						`运行错误喵: 要 ${paramNames.length} 个贡品，只给 ${argsCollection.length} 个不够喵！`
+						`要 ${paramNames.length} 个贡品，只给 ${argsCollection.length} 个不够喵！`,
 					);
 				}
 
@@ -372,46 +374,46 @@ export async function evaluate(
 					func.body,
 					functionEnv,
 					builtIns,
-					{ ...boundaryEnv, [NodeType.ReturnStatement]: functionEnv },
-					NewEnvType.FUNC
+					{ ...boundaryEnv, [NodeKind.ReturnStatement]: functionEnv },
+					NewEnvMode.FUNC,
 				);
 				if (result instanceof ReturnValue) return result.value;
 				if (isSignal(result)) {
 					logger.warn(
-						`[ENV #${functionEnv.id}] 在${typeNames[MeaoiuType.FUNCTION]} '${funcName}' 中，只能把东西“叼回来”喵。`
+						`[ENV #${functionEnv.id}] 在${typeNames[MeaoiuType.FUNCTION]} '${funcName}' 中，只能把东西“叼回来”喵。`,
 					);
 				}
 				return null;
 			}
-			case NodeType.UnaryExpression: {
+			case NodeKind.UnaryExpression: {
 				const { operator: op, argument } = node;
 				const argumentRef = await evaluate(argument, env, builtIns, boundaryEnv);
 				const argumentValue = resolveValue(argumentRef);
 
 				switch (op) {
-					case AssignmentKind.COPY: // 高仿
+					case AssignmentOperator.COPY: // 高仿
 						return argumentValue instanceof Environment ? argumentValue.createShallowCopy() : argumentValue;
-					case AssignmentKind.MOVE: // 抢走
-						if (!isReferenceLink(argumentRef)) throw errorFrom(argument, `运行错误喵: 只能抢走碗里的东西喵！`);
+					case AssignmentOperator.MOVE: // 抢走
+						if (!isReferenceLink(argumentRef)) throw runtimeErrorFrom(argument, `只能抢走碗里的东西喵！`);
 						Environment.markReferenceMoved(argumentRef); // 标记源头为已移动
 						return argumentValue;
 					default: // 理论不可达
 						const _o: never = op;
-						throw errorFrom(argument, `世界崩坏喵: 你为什么会「${_o}」喵！`);
+						throw errorFrom(argument, `你为什么会「${_o}」喵！`, Phase.INVARIANT);
 				}
 			}
-			case NodeType.ExpressionStatement:
+			case NodeKind.ExpressionStatement:
 				return evaluate(node.expression, env, builtIns, boundaryEnv);
-			case NodeType.ErrorNode:
-				throw new MeaoiuError(node);
+			case NodeKind.ErrorNode:
+				throw runtimeErrorFrom(node, node.message);
 			default: // 此处已推断为不可达
 				const n: never = node;
-				throw errorFrom(n, `运行错误喵: 不支持的节点类型喵！${n}`);
+				throw runtimeErrorFrom(n, `不支持的节点类型喵！${n}`);
 		}
 	} catch (err) {
 		if (err instanceof MeaoiuError) throw err;
 		const errorMessage = err instanceof Error ? err.message : String(err);
-		throw errorFrom(node, `运行错误喵: ${errorMessage}`); // 附加上当前 AST 节点再抛出
+		throw runtimeErrorFrom(node, `${errorMessage}`); // 附加上当前 AST 节点再抛出
 	}
 }
 
@@ -423,18 +425,18 @@ async function _evaluateCollectionElement(
 	blockEnv: Environment,
 	builtIns: MeaoiuBuiltIns,
 	boundaryEnv: BoundaryEnv,
-	autoIndexCounter: number
+	autoIndexCounter: number,
 ): Promise<number> {
 	const expr = stmt.expression;
 
 	let name: string | undefined;
-	let kind: AssignmentKind = AssignmentKind.COPY;
+	let operator: AssignmentOperator = AssignmentOperator.COPY;
 
-	if (expr.type === NodeType.Identifier) {
+	if (expr.kind === NodeKind.Identifier) {
 		// 元素是 `a` -> 声明为 `a`，并创建引用
 		name = expr.symbol;
-		kind = AssignmentKind.REFERENCE;
-	} else if (expr.type === NodeType.UnaryExpression && expr.argument.type === NodeType.Identifier) {
+		operator = AssignmentOperator.REFERENCE;
+	} else if (expr.kind === NodeKind.UnaryExpression && expr.argument.kind === NodeKind.Identifier) {
 		// 元素是 `高仿 a` 或 `抢走 a`
 		name = expr.argument.symbol;
 	}
@@ -443,12 +445,12 @@ async function _evaluateCollectionElement(
 	name ||= autoKey(autoIndexCounter++); // 没有显式名字就自动生成
 
 	if (blockEnv.hasVariable(name)) {
-		throw errorFrom(stmt, `运行错误喵: ${typeNames[MeaoiuType.COLLECTION]}里已经有一个叫做「${name}」的玩具了喵！`);
+		throw runtimeErrorFrom(stmt, `${typeNames[MeaoiuType.COLLECTION]}里已经有一个叫做「${name}」的玩具了喵！`);
 	}
 
 	// 将这个元素“声明”到纸箱的环境中
 	blockEnv.declare(name); // 这会将 name 添加到 orderedVariableNames
-	blockEnv.assign(name, valueToAssign, kind);
+	blockEnv.assign(name, valueToAssign, operator);
 
 	return autoIndexCounter;
 }
@@ -458,18 +460,18 @@ async function _evaluateAssignment(
 	env: Environment,
 	builtIns: MeaoiuBuiltIns,
 	boundaryEnv: BoundaryEnv,
-	preExecute?: () => void
+	preExecute?: () => void,
 ): Promise<ReturnType<Environment['assign']>> {
-	const { value: assignValue, assignee, kind } = stmt;
+	const { value: assignValue, assignee, operator } = stmt;
 	const value = await evaluate(assignValue, env, builtIns, boundaryEnv);
 
 	// 目标是 a@b 这种形式
-	if (assignee.type === NodeType.MemberAccessExpression) {
+	if (assignee.kind === NodeKind.MemberAccessExpression) {
 		const { object: objectNode, property: propertyNode } = assignee;
 		// 找到纸箱
 		const collection = resolveValue(await evaluate(objectNode, env, builtIns, boundaryEnv));
 		if (!(collection instanceof Environment)) {
-			throw errorFrom(objectNode, `运行错误喵: 只能给${typeNames[MeaoiuType.COLLECTION]}的成员赋值喵！`);
+			throw runtimeErrorFrom(objectNode, `只能给${typeNames[MeaoiuType.COLLECTION]}的成员赋值喵！`);
 		}
 
 		const name = await _evaluateMemberName(propertyNode, env, builtIns, boundaryEnv, collection, String);
@@ -480,15 +482,15 @@ async function _evaluateAssignment(
 			collection.declare(name); // 声明新键
 		}
 
-		return collection.assign(name, value, kind);
+		return collection.assign(name, value, operator);
 	}
 
 	preExecute?.();
 
 	// 目标是 a 这种普通变量
 	const target = await evaluate(assignee, env, builtIns, boundaryEnv);
-	if (!isReferenceLink(target)) throw errorFrom(assignee, `运行错误喵: 赋值的左边必须是一个碗喵！`);
-	return target.scope.assign(target.name, value, kind);
+	if (!isReferenceLink(target)) throw runtimeErrorFrom(assignee, `赋值的左边必须是一个碗喵！`);
+	return target.scope.assign(target.name, value, operator);
 }
 
 async function _evaluateMemberName(
@@ -497,7 +499,7 @@ async function _evaluateMemberName(
 	builtIns: MeaoiuBuiltIns,
 	boundaryEnv: BoundaryEnv,
 	collection: Environment,
-	catchOutRangeIndex: (index: number) => string
+	catchOutRangeIndex: (index: number) => string,
 ): Promise<string> {
 	// 找到索引/键
 	const propKey = resolveValue(await evaluate(prop, env, builtIns, boundaryEnv));
@@ -510,10 +512,8 @@ async function _evaluateMemberName(
 				? catchOutRangeIndex(propKey) // 数字索引超出范围
 				: collection.orderedVariableNames[propKey - 1]!; // 索引存在，用它在有序列表里的名字
 	}
-	throw errorFrom(
+	throw runtimeErrorFrom(
 		prop,
-		`运行错误喵: ${typeNames[MeaoiuType.COLLECTION]}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${
-			typeNames[MeaoiuType.STRING]
-		}喵！`
+		`${typeNames[MeaoiuType.COLLECTION]}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${typeNames[MeaoiuType.STRING]}喵！`,
 	);
 }

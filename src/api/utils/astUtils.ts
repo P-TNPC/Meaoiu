@@ -1,7 +1,7 @@
 // src/api/utils/astUtils.ts
 
 import type * as AST from '../../core/ast.js';
-import { NodeType } from '../../core/ast.js';
+import { NodeKind } from '../../core/ast.js';
 import type { Token } from '../../core/tokenizer.js';
 
 export function isNodeArray(array: AST.Node[] | Token[]): array is AST.Node[] {
@@ -20,7 +20,7 @@ export function findIdentifierAt(ast: AST.Node, line: number, col: number): AST.
 	function walk(node: AST.Node) {
 		if (found) return;
 
-		if (node.type === NodeType.Identifier && node.line === line && node.col <= col && col < node.endCol) {
+		if (node.kind === NodeKind.Identifier && node.line === line && node.col <= col && col < node.endCol) {
 			found = node;
 			return;
 		}

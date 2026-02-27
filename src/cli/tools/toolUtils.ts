@@ -18,8 +18,13 @@ export function parsePosition(pos?: string): { line: number; col: number } {
 }
 
 export function formatError(error: unknown, sourceCode: string, filePath: string): string {
-	const { message, line, col, endLine, endCol } =
-		error instanceof MeaoiuError ? error : parseError(error instanceof Error ? error.message : String(error));
+	const {
+		messageWithPhase: message,
+		line,
+		col,
+		endLine,
+		endCol,
+	} = error instanceof MeaoiuError ? error : parseError(error instanceof Error ? error.message : String(error));
 
 	if (line <= 0) return `\n💥 坏了喵！💥\n${message}\n`;
 

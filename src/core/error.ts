@@ -3,34 +3,59 @@
 import type * as AST from './ast.js';
 import type { Token } from './tokenizer.js';
 
+export const enum Phase {
+	UNKNOWN = 0,
+	INVARIANT,
+	LEXICAL,
+	SYNTACTIC,
+	SEMANTIC,
+	RUNTIME,
+}
+
 type StartPosition = { line: number; col: number };
-type EndPosition = { endLine: number; endCol: number };
-type ErrorParams = { message: string } & StartPosition & (EndPosition | {});
+type EndPosition = { endLine: number; endCol: number } | { endLine?: never; endCol?: never };
+type ErrorParams = { message: string; phase: Phase } & StartPosition & EndPosition;
 
 export class MeaoiuError {
 	public readonly message: string;
+	public readonly phase: Phase;
 	public readonly line: number;
 	public readonly col: number;
 	public readonly endLine: number;
 	public readonly endCol: number;
 
 	constructor(params: ErrorParams) {
-		const { message, line, col } = params;
+		const { message, phase, line, col, endLine = line, endCol = col } = params;
 		this.message = message;
+		this.phase = phase;
 		this.line = line;
 		this.col = col;
-		this.endLine = 'endLine' in params ? params.endLine : line;
-		this.endCol = 'endCol' in params ? params.endCol : col;
+		this.endLine = endLine;
+		this.endCol = endCol;
 	}
 
-	toString() {
+	/** 错误消息，包含错误种类 */
+	public get messageWithPhase(): string {
+		const phaseString = {
+			[Phase.UNKNOWN]: '？？？',
+			[Phase.INVARIANT]: '世界崩坏',
+			[Phase.LEXICAL]: '词法错误',
+			[Phase.SYNTACTIC]: '句法错误',
+			[Phase.SEMANTIC]: '语义错误',
+			[Phase.RUNTIME]: '运行错误',
+		}[this.phase];
+		return `${phaseString}喵：${this.message}`;
+	}
+
+	public toString(): string {
 		return `[${this.line}:${this.col}] ${this.message}`;
 	}
 }
 
-export function errorFrom(ele: AST.Node | Token, message: string): MeaoiuError {
+export function errorFrom(ele: AST.Node | Token, message: string, phase: Phase): MeaoiuError {
 	return new MeaoiuError({
 		message,
+		phase,
 		...('endLine' in ele ? ele : { ...ele, endLine: ele.line, endCol: ele.col + (ele.value.length || 1) }),
 	}); // 若来 ErrorNode，自然以 ErrorNode 的 message 覆盖；若是 Token，尾端位置为 Token 末尾
 }
@@ -41,9 +66,10 @@ const parseIntOrNull = (input: string | undefined): number | null => {
 	return Number.isNaN(n) ? null : n;
 };
 
-export function parseError(message: string): MeaoiuError {
+export function parseError(message: string, phase = Phase.UNKNOWN): MeaoiuError {
 	const errorParams = {
 		message,
+		phase,
 		line: -1,
 		col: -1,
 	};

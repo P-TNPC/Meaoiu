@@ -22,7 +22,7 @@ export function complete(sourceCode: string, posRaw?: string): void {
 			acc[k].push(label);
 			return acc;
 		},
-		{ variable: [], function: [], parameter: [], keyword: [] }
+		{ variable: [], function: [], parameter: [], keyword: [] },
 	);
 
 	console.log(`[自动补全] 在位置 ${pos.line}:${pos.col} 的建议:`);

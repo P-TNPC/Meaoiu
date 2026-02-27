@@ -1,7 +1,7 @@
 // src/core/run/environment.ts
 
 import type * as AST from '../ast.js';
-import { AssignmentKind } from '../ast.js';
+import { AssignmentOperator } from '../ast.js';
 import logger from '../run/logger.js';
 import { MeaoiuType, typeNames, type MeaoiuValue } from '../typedef.js';
 import {
@@ -59,7 +59,7 @@ export class Environment {
 	/**
 	 * 为已存在的变量赋值。
 	 */
-	public assign(name: string, value: Evaluated, kind: AST.AssignmentKind): ReferenceLink {
+	public assign(name: string, value: Evaluated, operator: AST.AssignmentOperator): ReferenceLink {
 		// 查找并追踪目标的最终存放位置
 		const initialTargetScope = this.findVariableScope(name);
 		if (!initialTargetScope) throw new Error(`还不认识「${name}」喵！要先“蹭”一下喵！`);
@@ -76,7 +76,7 @@ export class Environment {
 
 		// 在最终位置赋值
 		let finalValue: VariableValue;
-		if (kind === AssignmentKind.REFERENCE) {
+		if (operator === AssignmentOperator.REFERENCE) {
 			finalValue =
 				isReferenceLink(value) &&
 				(finalTargetScope !== value.scope || finalTargetName !== value.name) /* 防御循环引用 */
@@ -84,16 +84,16 @@ export class Environment {
 					: Environment.resolveValue(value);
 		} else {
 			finalValue = Environment.resolveValue(value);
-			if (kind === AssignmentKind.MOVE) {
+			if (operator === AssignmentOperator.MOVE) {
 				if (isReferenceLink(value)) Environment.markReferenceMoved(value); // 引用被移动，标记为「已移动」
-			} else if (kind === AssignmentKind.COPY && finalValue instanceof Environment) {
+			} else if (operator === AssignmentOperator.COPY && finalValue instanceof Environment) {
 				finalValue = finalValue.createShallowCopy(); // 复制一个纸箱，实际上是创建一个「视图」
 			}
 		}
 		finalTargetScope.variables.set(finalTargetName, { value: finalValue, moved: false });
 		logger.debug(
-			`[ENV #${this.id}] 赋值: 环境 #${finalTargetScope.id} 中的「${finalTargetName}」被赋予 (方式: ${kind}) 值:`,
-			finalValue
+			`[ENV #${this.id}] 赋值: 环境 #${finalTargetScope.id} 中的「${finalTargetName}」被赋予 (方式: ${operator}) 值:`,
+			finalValue,
 		);
 
 		return finalTargetScope.lookup(finalTargetName);
@@ -115,8 +115,8 @@ export class Environment {
 			const errorMessage = isAutoKey(originalName)
 				? `纸箱里的「${this.orderedVariableNames.indexOf(originalName) + 1}」号玩具不见了，一定是被谁拿走了喵！`
 				: originalName === name
-				? `藏在「${originalName}」里的东西被拿走了，现在是只空碗喵！`
-				: `碰不到「${originalName}」，因为它的本体「${name}」被拿走了喵！`; // 起终点不一致，报告起终点
+					? `藏在「${originalName}」里的东西被拿走了，现在是只空碗喵！`
+					: `碰不到「${originalName}」，因为它的本体「${name}」被拿走了喵！`; // 起终点不一致，报告起终点
 			throw new Error(`喵呜！${errorMessage}`);
 		}
 		logger.debug(`[ENV #${this.id}] 查找: 在环境 #${scope.id} 中找到「${name}」`);

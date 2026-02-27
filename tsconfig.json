@@ -1,29 +1,25 @@
 {
-	// Visit https://aka.ms/tsconfig to read more about this file
 	"compilerOptions": {
-		// File Layout
+		// 文件结构
 		"rootDir": "./src",
 		"outDir": "./dist",
 
-		// Environment Settings
-		// See also https://aka.ms/tsconfig/module
+		// 环境规范
 		"module": "nodenext",
 		"target": "esnext",
-		// For nodejs:
 		"lib": ["esnext"],
 		"types": ["node"],
-		// and npm install -D @types/node
 
-		// Other Outputs
+		// 输出附加
 		"sourceMap": true,
 		"declaration": true,
 		"declarationMap": true,
 
-		// Stricter Typechecking Options
+		// 类型严查
 		"noUncheckedIndexedAccess": true,
 		"exactOptionalPropertyTypes": true,
 
-		// Style Options
+		// 品质之选
 		"noImplicitReturns": true,
 		"noImplicitOverride": true,
 		"noUnusedLocals": true,
@@ -31,11 +27,11 @@
 		"noFallthroughCasesInSwitch": true,
 		"noPropertyAccessFromIndexSignature": true,
 
-		// Recommended Options
+		// 补充选项
 		"strict": true,
-		"verbatimModuleSyntax": false,
-		"isolatedModules": false,
-		"preserveConstEnums": false,
+		"verbatimModuleSyntax": false, // 弊于常量枚举，禁
+		"isolatedModules": false, // 弊于常量枚举，禁
+		"preserveConstEnums": false, // 生成的用不上，禁
 		"noUncheckedSideEffectImports": true,
 		"moduleDetection": "force",
 		"skipLibCheck": false

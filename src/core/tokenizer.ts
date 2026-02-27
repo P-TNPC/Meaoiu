@@ -3,7 +3,7 @@
 import { preprocess } from './preprocessor.js';
 import { MeaoiuBuiltInNames } from './builtIns.js';
 
-export const enum TokenType {
+export const enum TokenKind {
 	ERROR, //不认识的字符喵
 
 	// 关键字
@@ -55,30 +55,30 @@ export const enum TokenType {
 }
 
 export const KEYWORDS = {
-	蹭: TokenType.KEYWORD_USE,
-	就是: TokenType.KEYWORD_IS,
-	就像: TokenType.KEYWORD_LIKE,
-	高仿: TokenType.KEYWORD_CLONE,
-	才是: TokenType.KEYWORD_ONLY,
-	抢走: TokenType.KEYWORD_MOVE,
-	'好不好?': TokenType.KEYWORD_CONFIRM,
-	不然: TokenType.KEYWORD_ELSE,
-	玩耍: TokenType.KEYWORD_LOOP,
-	累了: TokenType.KEYWORD_BREAK,
-	想要: TokenType.KEYWORD_DEF,
-	扒: TokenType.KEYWORD_CALL,
-	叼回来: TokenType.KEYWORD_RETURN,
-	偷袭: TokenType.KEYWORD_AMBUSH,
-	好喵: TokenType.BOOLEAN,
-	坏喵: TokenType.BOOLEAN,
-	空碗: TokenType.NULL,
-	和: TokenType.LOGIC_AND,
-	或: TokenType.LOGIC_OR,
-	都好: TokenType.LOGIC_CLOSE_AND,
-	有好: TokenType.LOGIC_CLOSE_OR,
-	都坏: TokenType.LOGIC_CLOSE_NOR,
-	有坏: TokenType.LOGIC_CLOSE_NAND,
-} as const satisfies Record<string, TokenType>;
+	蹭: TokenKind.KEYWORD_USE,
+	就是: TokenKind.KEYWORD_IS,
+	就像: TokenKind.KEYWORD_LIKE,
+	高仿: TokenKind.KEYWORD_CLONE,
+	才是: TokenKind.KEYWORD_ONLY,
+	抢走: TokenKind.KEYWORD_MOVE,
+	'好不好?': TokenKind.KEYWORD_CONFIRM,
+	不然: TokenKind.KEYWORD_ELSE,
+	玩耍: TokenKind.KEYWORD_LOOP,
+	累了: TokenKind.KEYWORD_BREAK,
+	想要: TokenKind.KEYWORD_DEF,
+	扒: TokenKind.KEYWORD_CALL,
+	叼回来: TokenKind.KEYWORD_RETURN,
+	偷袭: TokenKind.KEYWORD_AMBUSH,
+	好喵: TokenKind.BOOLEAN,
+	坏喵: TokenKind.BOOLEAN,
+	空碗: TokenKind.NULL,
+	和: TokenKind.LOGIC_AND,
+	或: TokenKind.LOGIC_OR,
+	都好: TokenKind.LOGIC_CLOSE_AND,
+	有好: TokenKind.LOGIC_CLOSE_OR,
+	都坏: TokenKind.LOGIC_CLOSE_NOR,
+	有坏: TokenKind.LOGIC_CLOSE_NAND,
+} as const satisfies Record<string, TokenKind>;
 export type Keyword = keyof typeof KEYWORDS;
 export function isKeyword(symbol: string): symbol is Keyword {
 	return symbol in KEYWORDS;
@@ -92,7 +92,7 @@ export const OP_COMP_E = new Set(['==', '!=']);
 const TWO_CHAR_SYMBOLS = new Set(['==', '!=', '>=', '<=', '[=', '=]', '[#', '#]']);
 
 export type Token = {
-	type: TokenType;
+	kind: TokenKind;
 	value: string;
 	line: number;
 	col: number;
@@ -160,7 +160,7 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 			if (nestingLevel !== 0) console.error('警告喵: 文件结尾有未闭合的悄悄话！');
 
 			if (!ignoreComments) {
-				tokens.push({ type: TokenType.COMMENT, value: commentContent, line: commentStartLine, col: commentStartCol });
+				tokens.push({ kind: TokenKind.COMMENT, value: commentContent, line: commentStartLine, col: commentStartCol });
 			}
 			continue;
 		}
@@ -174,34 +174,34 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 			}
 		}
 		if (matchedKeyword) {
-			const tokenType = KEYWORDS[matchedKeyword];
-			tokens.push({ type: tokenType, value: matchedKeyword, line: startLine, col: startCol });
+			const tokenKind = KEYWORDS[matchedKeyword];
+			tokens.push({ kind: tokenKind, value: matchedKeyword, line: startLine, col: startCol });
 			advance(matchedKeyword.length);
 
-			if (tokenType === TokenType.KEYWORD_DEF) expectingFuncNameAfterParamEnd = true; // '想要'
+			if (tokenKind === TokenKind.KEYWORD_DEF) expectingFuncNameAfterParamEnd = true; // '想要'
 			continue;
 		}
 
 		const twoCharSymbol = sourceCode.substring(cursor, cursor + 2);
 		if (TWO_CHAR_SYMBOLS.has(twoCharSymbol)) {
-			let type: TokenType = TokenType.OPERATOR;
-			if (twoCharSymbol === '[=') type = TokenType.COLLECTION_START;
-			else if (twoCharSymbol === '=]') type = TokenType.COLLECTION_END;
-			else if (twoCharSymbol === '[#') type = TokenType.BLOCK_START;
-			else if (twoCharSymbol === '#]') type = TokenType.BLOCK_END;
-			tokens.push({ type, value: twoCharSymbol, line: startLine, col: startCol });
+			let kind: TokenKind = TokenKind.OPERATOR;
+			if (twoCharSymbol === '[=') kind = TokenKind.COLLECTION_START;
+			else if (twoCharSymbol === '=]') kind = TokenKind.COLLECTION_END;
+			else if (twoCharSymbol === '[#') kind = TokenKind.BLOCK_START;
+			else if (twoCharSymbol === '#]') kind = TokenKind.BLOCK_END;
+			tokens.push({ kind, value: twoCharSymbol, line: startLine, col: startCol });
 			advance(2);
 
-			if (type !== TokenType.COLLECTION_END) expectingFuncNameAfterParamEnd = false;
+			if (kind !== TokenKind.COLLECTION_END) expectingFuncNameAfterParamEnd = false;
 			continue;
 		}
 
 		if ('+-*/><@~,'.includes(char)) {
-			let type: TokenType = TokenType.OPERATOR;
-			if (char === ',') type = TokenType.COMMA;
-			else if (char === '@') type = TokenType.ACCESSOR;
-			else if (char === '~') type = TokenType.TERMINATOR;
-			tokens.push({ type, value: char, line: startLine, col: startCol });
+			let kind: TokenKind = TokenKind.OPERATOR;
+			if (char === ',') kind = TokenKind.COMMA;
+			else if (char === '@') kind = TokenKind.ACCESSOR;
+			else if (char === '~') kind = TokenKind.TERMINATOR;
+			tokens.push({ kind, value: char, line: startLine, col: startCol });
 			advance();
 			continue;
 		}
@@ -212,7 +212,7 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 				numStr += sourceCode[cursor];
 				advance();
 			}
-			tokens.push({ type: TokenType.NUMBER, value: numStr, line: startLine, col: startCol });
+			tokens.push({ kind: TokenKind.NUMBER, value: numStr, line: startLine, col: startCol });
 			continue;
 		}
 
@@ -225,7 +225,7 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 				advance();
 			}
 			advance();
-			tokens.push({ type: TokenType.STRING, value: str, line: startLine, col: startCol });
+			tokens.push({ kind: TokenKind.STRING, value: str, line: startLine, col: startCol });
 			continue;
 		}
 
@@ -269,7 +269,7 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 			// 最后，统一创建 Token
 			if (identifier) {
 				tokens.push({
-					type: TokenType.IDENTIFIER,
+					kind: TokenKind.IDENTIFIER,
 					value: identifier,
 					line: identifierStartLine,
 					col: identifierStartCol,
@@ -284,13 +284,13 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 		}
 
 		// 不认识的字符喵
-		tokens.push({ type: TokenType.ERROR, value: char, line: startLine, col: startCol });
+		tokens.push({ kind: TokenKind.ERROR, value: char, line: startLine, col: startCol });
 		console.error('不认识的字符喵:', char);
 
 		advance();
 	}
 
-	tokens.push({ type: TokenType.EOF, value: 'EndOfFile', line, col });
+	tokens.push({ kind: TokenKind.EOF, value: 'EndOfFile', line, col });
 	return repairCallTokens(tokens, functionNames);
 }
 
@@ -312,9 +312,9 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 
 		// 检查是否是需要修复的目标
 		if (
-			currentToken.type !== TokenType.KEYWORD_CALL || // 不是 '扒'
-			nextToken?.type !== TokenType.IDENTIFIER || // 后面无跟着的标识符
-			nextNextToken?.type === TokenType.IDENTIFIER // 后面跟着第二个标识符
+			currentToken.kind !== TokenKind.KEYWORD_CALL || // 不是 '扒'
+			nextToken?.kind !== TokenKind.IDENTIFIER || // 后面无跟着的标识符
+			nextNextToken?.kind === TokenKind.IDENTIFIER // 后面跟着第二个标识符
 		) {
 			// 不是需要修复的目标，或者是一个安全的 `扒 纸箱名 函数名`
 			repairedTokens.push(currentToken);
@@ -334,7 +334,7 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 
 			// 1. 创建“纸箱名” Token
 			const collectionToken: Token = {
-				type: TokenType.IDENTIFIER,
+				kind: TokenKind.IDENTIFIER,
 				value: collectionName,
 				line: tokenToSplit.line,
 				col: tokenToSplit.col,
@@ -342,7 +342,7 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 
 			// 2. 创建“函数名” Token，注意计算新的列号
 			const functionToken: Token = {
-				type: TokenType.IDENTIFIER,
+				kind: TokenKind.IDENTIFIER,
 				value: funcName,
 				line: tokenToSplit.line,
 				col: tokenToSplit.col + collectionName.length,
