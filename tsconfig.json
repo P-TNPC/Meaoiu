@@ -29,9 +29,9 @@
 
 		// 补充选项
 		"strict": true,
-		"verbatimModuleSyntax": false, // 弊于常量枚举，禁
-		"isolatedModules": false, // 弊于常量枚举，禁
-		"preserveConstEnums": false, // 生成的用不上，禁
+		"isolatedModules": false, // 一些打包器需启用，仅 tsc 则无需
+		"verbatimModuleSyntax": false, // 同上
+		"preserveConstEnums": false, // 此为 false 时，上两项应同为 false
 		"noUncheckedSideEffectImports": true,
 		"moduleDetection": "force",
 		"skipLibCheck": false

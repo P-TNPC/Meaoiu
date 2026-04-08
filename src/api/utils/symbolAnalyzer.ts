@@ -252,7 +252,7 @@ class SymbolAnalyzer {
 				}
 
 				// 更新符号表
-				this.currentScope.symbols.set(assignee.symbol, symbol);
+				this.findSymbolScope(assignee.symbol)!.symbols.set(assignee.symbol, symbol);
 				this.symbolMap.set(assignee, symbol);
 
 				if (symbol.tag !== SymbolTag.NORMAL) {
@@ -417,6 +417,13 @@ class SymbolAnalyzer {
 		this.currentScope = this.currentScope.parent!;
 	}
 
+	private findSymbolScope(name: string): Scope | undefined {
+		for (let scope: Scope | undefined = this.currentScope; scope; scope = scope.parent) {
+			if (scope.symbols.has(name)) return scope;
+		}
+		return undefined;
+	}
+
 	private declare(
 		name: string,
 		kind: SymbolKind,
@@ -438,14 +445,9 @@ class SymbolAnalyzer {
 
 	private lookup(name: string, resolveChain: boolean = true): SymbolInfo | undefined {
 		// 1. 在作用域中找到该名字的“第一环”
-		let foundSymbol: SymbolInfo | undefined;
-		for (let scope: Scope | undefined = this.currentScope; scope; scope = scope.parent) {
-			if (scope.symbols.has(name)) {
-				foundSymbol = scope.symbols.get(name);
-				break;
-			}
-		}
-		if (!foundSymbol) return undefined;
+		const scope = this.findSymbolScope(name);
+		if (!scope) return undefined;
+		let foundSymbol: SymbolInfo = scope.symbols.get(name)!;
 
 		// 2. 如果不需要追踪链（比如在声明时），直接返回
 		if (!resolveChain) return foundSymbol;

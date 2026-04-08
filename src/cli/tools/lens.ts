@@ -6,7 +6,7 @@ import { findReferences } from '../../api/services/references.js';
 import { ServiceState } from '../../api/serviceState.js';
 import { parsePosition } from './toolUtils.js';
 
-export function definition(sourceCode: string, filePath: string, posRaw?: string): void {
+export function definition(sourceCode: string, filePath: string, posRaw: string): void {
 	const pos = parsePosition(posRaw);
 
 	const definitionInfo = findDefinition(new ServiceState(0, sourceCode), pos);
@@ -16,7 +16,7 @@ export function definition(sourceCode: string, filePath: string, posRaw?: string
 	console.log(`[定义查找] '${definitionInfo.name}' 在 ${filePath}:${defNode.line}:${defNode.col} 被定义。`);
 }
 
-export function references(sourceCode: string, filePath: string, posRaw?: string): void {
+export function references(sourceCode: string, filePath: string, posRaw: string): void {
 	const pos = parsePosition(posRaw);
 
 	const references = findReferences(new ServiceState(0, sourceCode), pos);
@@ -25,7 +25,7 @@ export function references(sourceCode: string, filePath: string, posRaw?: string
 	for (const { line, col } of references) console.log(`- L${line}:${col}`);
 }
 
-export function hover(sourceCode: string, posRaw?: string): void {
+export function hover(sourceCode: string, posRaw: string): void {
 	const pos = parsePosition(posRaw);
 
 	const hoverInfo = getHoverInfo(new ServiceState(0, sourceCode), pos);

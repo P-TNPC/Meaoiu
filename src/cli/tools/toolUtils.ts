@@ -5,14 +5,13 @@ import readline from 'readline';
 import stringWidth from 'string-width';
 import { MeaoiuError, parseError } from '../../core/error.js';
 
-export function parsePosition(pos?: string): { line: number; col: number } {
-	if (!pos) throw new Error('位置参数不能为空');
+export function parsePosition(pos: string): { line: number; col: number } {
 	const parts = pos.split(':');
-	if (parts.length !== 2) throw new Error('位置参数格式错误，应为 "行:列"，如 "2:3"');
+	if (parts.length !== 2) throw parseError("位置参数格式错误，应为 '行:列'，如 '2:3'");
 	const line = Number(parts[0]);
 	const col = Number(parts[1]);
 	if (!Number.isInteger(line) || !Number.isInteger(col) || line <= 0 || col <= 0) {
-		throw new Error('位置参数格式错误，行和列必须为正整数');
+		throw parseError('位置参数格式错误，行和列必须为正整数');
 	}
 	return { line, col };
 }
