@@ -338,9 +338,7 @@ export async function evaluate(
 				}
 
 				const func = env.findFunction(funcName);
-				if (!func) {
-					throw runtimeErrorFrom(callee, `没有叫「${funcName}」的${typeNames[MeaoiuType.FUNCTION]}喵！`);
-				}
+				if (!func) throw runtimeErrorFrom(callee, `没有叫「${funcName}」的${typeNames[MeaoiuType.FUNCTION]}喵！`);
 
 				// 从函数定义的参数块中，按顺序提取出参数的名字
 				const paramNames = func.parameters.body

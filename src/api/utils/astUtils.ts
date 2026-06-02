@@ -2,10 +2,76 @@
 
 import type * as AST from '../../core/ast.js';
 import { NodeKind } from '../../core/ast.js';
-import type { Token } from '../../core/tokenizer.js';
 
-export function isNodeArray(array: AST.Node[] | Token[]): array is AST.Node[] {
-	return !!array[0] && 'endLine' in array[0];
+export function forEachChild(node: AST.Node, action: (child: AST.Node) => void): void {
+	switch (node.kind) {
+		case NodeKind.Program:
+		case NodeKind.BlockExpression:
+			node.body.forEach(action);
+			break;
+		case NodeKind.VariableDeclaration:
+			action(node.identifier);
+			if (node.initialization) action(node.initialization);
+			break;
+		case NodeKind.AssignmentStatement:
+			action(node.assignee);
+			action(node.value);
+			break;
+		case NodeKind.FunctionDeclaration:
+			action(node.name);
+			action(node.parameters);
+			action(node.body);
+			break;
+		case NodeKind.ReturnStatement:
+		case NodeKind.AmbushStatement:
+			if (node.argument) action(node.argument);
+			break;
+		case NodeKind.ExpressionStatement:
+			action(node.expression);
+			break;
+		case NodeKind.IfExpression:
+			action(node.condition);
+			action(node.consequent);
+			if (node.alternate) action(node.alternate);
+			break;
+		case NodeKind.LoopExpression:
+			action(node.body);
+			break;
+		case NodeKind.CallExpression:
+			action(node.callee);
+			action(node.args);
+			break;
+		case NodeKind.MemberAccessExpression:
+			action(node.object);
+			action(node.property);
+			break;
+		case NodeKind.UnaryExpression:
+			action(node.argument);
+			break;
+		case NodeKind.ArithmeticExpression:
+		case NodeKind.LogicalExpression:
+			action(node.left);
+			action(node.right);
+			break;
+		case NodeKind.ComparisonExpression:
+			node.expressions.forEach(action);
+			break;
+		case NodeKind.SequenceExpression:
+			node.sections.forEach(action);
+			break;
+		case NodeKind.BreakStatement:
+		case NodeKind.NumericLiteral:
+		case NodeKind.StringLiteral:
+		case NodeKind.BooleanLiteral:
+		case NodeKind.NullLiteral:
+		case NodeKind.Identifier:
+		case NodeKind.ErrorNode:
+			break;
+		default: {
+			const _n: never = node;
+			console.error(`未识别的节点: ${_n}`);
+		}
+	}
 }
 
 /**
@@ -26,29 +92,18 @@ export function findIdentifierAt(ast: AST.Node, line: number, col: number): AST.
 		}
 
 		// 递归遍历所有子节点
-		for (const key in node) {
-			const value = node[key];
-			if (!value || typeof value !== 'object') continue;
-			if (!Array.isArray(value)) walk(value);
-			else if (isNodeArray(value)) value.forEach(child => walk(child));
-		}
+		forEachChild(node, child => walk(child));
 	}
 	walk(ast);
 
 	return found;
 }
 
-export function buildParentMap(node: AST.Node) {
+export function buildParentMap(node: AST.Node): WeakMap<AST.Node, AST.Node> {
 	const parentMap = new WeakMap<AST.Node, AST.Node>();
 	function build(node: AST.Node, parent?: AST.Node) {
 		if (parent) parentMap.set(node, parent);
-
-		for (const key in node) {
-			const value = node[key];
-			if (!value || typeof value !== 'object') continue;
-			if (!Array.isArray(value)) build(value, node);
-			else if (isNodeArray(value)) value.forEach(child => build(child, node));
-		}
+		forEachChild(node, child => build(child, node));
 	}
 	build(node);
 

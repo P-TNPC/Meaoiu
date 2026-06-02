@@ -1,7 +1,7 @@
 // src/cli/tools/toolUtils.ts
 
-import * as path from 'path';
-import readline from 'readline';
+import path from 'node:path';
+import readline from 'node:readline';
 import stringWidth from 'string-width';
 import { MeaoiuError, parseError } from '../../core/error.js';
 
@@ -31,7 +31,7 @@ export function formatError(error: unknown, sourceCode: string, filePath: string
 	const errorLine = lines[line - 1];
 	if (errorLine === undefined) return `坏了喵: ${message} (找不到秘卷第 ${line} 行)`;
 
-	const prefix = errorLine.substring(0, col - 1);
+	const prefix = errorLine.slice(0, col - 1);
 	const prefixWidth = stringWidth(prefix);
 	const errorPart = errorLine.slice(col - 1, (endLine === line ? endCol : errorLine.length) - 1);
 	const errorPartWidth = stringWidth(errorPart) || 1;

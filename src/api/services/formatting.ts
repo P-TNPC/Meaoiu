@@ -174,9 +174,9 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			};
 			const c = {
 				[LogicalOperator.AND]: '都好',
-				[LogicalOperator.OR]: '有好',
+				[LogicalOperator.OR]: '不坏',
 				[LogicalOperator.NOR]: '都坏',
-				[LogicalOperator.NAND]: '有坏',
+				[LogicalOperator.NAND]: '不好',
 			};
 			content = `${printNodeContent(left, options)} ${o[operator]} ${printNodeContent(right, options)} ${c[operator]}`;
 			break;

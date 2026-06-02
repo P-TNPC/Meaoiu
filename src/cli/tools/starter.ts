@@ -7,7 +7,7 @@ import { evaluate } from '../../core/run/interpreter.js';
 import { tokenize } from '../../core/tokenizer.js';
 import { formatError } from './toolUtils.js';
 
-export async function run(sourceCode: string, builtIns: MeaoiuBuiltIns, filePath: string) {
+export async function run(sourceCode: string, builtIns: MeaoiuBuiltIns, filePath: string): Promise<void> {
 	if (!sourceCode.trim()) return console.error('没有字喵！');
 	let start = 0,
 		end = 0;

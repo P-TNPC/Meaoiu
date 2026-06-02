@@ -99,7 +99,7 @@ export class Environment {
 		return finalTargetScope.lookup(finalTargetName);
 	}
 
-	public lookup(name: string, originalName /* 未定源时为第一环查询 */ = name, checkMoved = true): ReferenceLink {
+	public lookup(name: string, originalName: string = name /* 未定源时为第一环查询 */, checkMoved = true): ReferenceLink {
 		// 查找符号
 		const scope = this.findVariableScope(name);
 		if (!scope) {

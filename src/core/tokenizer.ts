@@ -45,9 +45,9 @@ export const enum TokenKind {
 	LOGIC_AND, // 和
 	LOGIC_OR, // 或
 	LOGIC_CLOSE_AND, // 都好
-	LOGIC_CLOSE_OR, // 有好
-	LOGIC_CLOSE_NAND, // 有坏
+	LOGIC_CLOSE_OR, // 不坏
 	LOGIC_CLOSE_NOR, // 都坏
+	LOGIC_CLOSE_NAND, // 不好
 
 	// 其他
 	COMMENT,
@@ -75,9 +75,9 @@ export const KEYWORDS = {
 	和: TokenKind.LOGIC_AND,
 	或: TokenKind.LOGIC_OR,
 	都好: TokenKind.LOGIC_CLOSE_AND,
-	有好: TokenKind.LOGIC_CLOSE_OR,
+	不坏: TokenKind.LOGIC_CLOSE_OR,
 	都坏: TokenKind.LOGIC_CLOSE_NOR,
-	有坏: TokenKind.LOGIC_CLOSE_NAND,
+	不好: TokenKind.LOGIC_CLOSE_NAND,
 } as const satisfies Record<string, TokenKind>;
 export type Keyword = keyof typeof KEYWORDS;
 export function isKeyword(symbol: string): symbol is Keyword {
@@ -89,7 +89,9 @@ export const sortedKeywords = Object.keys(KEYWORDS).sort((a, b) => b.length - a.
 export const OP_ARITH = new Set(['+', '-', '*', '/']);
 export const OP_COMP = new Set(['==', '!=', '>', '<', '>=', '<=']);
 export const OP_COMP_E = new Set(['==', '!=']);
-const TWO_CHAR_SYMBOLS = new Set(['==', '!=', '>=', '<=', '[=', '=]', '[#', '#]']);
+const ID_START_REGEX = /[\p{ID_Start}_]/v;
+const ID_CONTINUE_REGEX = /[\p{ID_Continue}]/v;
+const isNumChar = (char: string) => char >= '0' && char <= '9';
 
 export type Token = {
 	kind: TokenKind;
@@ -108,6 +110,7 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 	const { ignoreComments = true, convertFullWidth = true, useOnebased = true } = options ?? {};
 	const OriginBase = +useOnebased;
 	if (convertFullWidth) sourceCode = preprocess(sourceCode);
+	const sourceCodeLen = sourceCode.length;
 
 	// 小本本：记函数
 	const functionNames = new Set<string>(MeaoiuBuiltInNames);
@@ -118,57 +121,51 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 		col = OriginBase,
 		cursor = 0;
 
+	const charAt = (cursor: number) => String.fromCodePoint(sourceCode.codePointAt(cursor)!);
 	const advance = (steps = 1) => {
-		for (let i = 0; i < steps; i++) {
-			if (sourceCode[cursor + i] === '\n') {
-				line++;
-				col = OriginBase;
-			} else {
-				col++;
-			}
-		}
-		cursor += steps;
+		const target = cursor + steps;
+		const end = Math.min(target, sourceCodeLen);
+		while (cursor < end) sourceCode[cursor++] === '\n' ? (line++, (col = OriginBase)) : col++;
+		cursor = target;
 	};
 
-	while (cursor < sourceCode.length) {
+	while (cursor < sourceCodeLen) {
 		const startLine = line;
 		const startCol = col;
-		let char = sourceCode[cursor]!;
+		const char = charAt(cursor);
+		const charLen = char.length; // 步进长度记好了喵！
 
+		// 略过空白
 		if (/\s/.test(char)) {
-			advance();
+			advance(charLen);
 			continue;
 		}
-
+		// 注释
 		if (char === '(') {
-			let commentContent = '';
-			let nestingLevel = 1;
-			const commentStartLine = line;
-			const commentStartCol = col;
+			const contentStart = cursor + charLen;
+			let nestingLevel = 1,
+				i = contentStart; // 局部游标，跳过起点的 '('
 
-			advance();
-
-			while (nestingLevel > 0 && cursor < sourceCode.length) {
-				char = sourceCode[cursor]!;
-				if (char === '(') nestingLevel++;
-				else if (char === ')') nestingLevel--;
-
-				if (nestingLevel > 0) commentContent += char;
-				advance();
+			while (nestingLevel > 0 && i < sourceCodeLen) {
+				const innerChar = sourceCode[i++];
+				if (innerChar === '(') nestingLevel++;
+				else if (innerChar === ')') nestingLevel--;
 			}
+			advance(i - cursor);
 
 			if (nestingLevel !== 0) console.error('警告喵: 文件结尾有未闭合的悄悄话！');
+			else i--; // 退一步，把最后的 ')' 排除在截取范围外
 
 			if (!ignoreComments) {
-				tokens.push({ kind: TokenKind.COMMENT, value: commentContent, line: commentStartLine, col: commentStartCol });
+				const commentContent = sourceCode.slice(contentStart, i);
+				tokens.push({ kind: TokenKind.COMMENT, value: commentContent, line: startLine, col: startCol });
 			}
 			continue;
 		}
-
-		const remainingCode = sourceCode.substring(cursor);
+		// 关键字
 		let matchedKeyword: Keyword | undefined;
 		for (const keyword of sortedKeywords) {
-			if (remainingCode.startsWith(keyword)) {
+			if (sourceCode.startsWith(keyword, cursor)) {
 				matchedKeyword = keyword;
 				break;
 			}
@@ -181,99 +178,107 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 			if (tokenKind === TokenKind.KEYWORD_DEF) expectingFuncNameAfterParamEnd = true; // '想要'
 			continue;
 		}
-
-		const twoCharSymbol = sourceCode.substring(cursor, cursor + 2);
-		if (TWO_CHAR_SYMBOLS.has(twoCharSymbol)) {
-			let kind: TokenKind = TokenKind.OPERATOR;
-			if (twoCharSymbol === '[=') kind = TokenKind.COLLECTION_START;
-			else if (twoCharSymbol === '=]') kind = TokenKind.COLLECTION_END;
-			else if (twoCharSymbol === '[#') kind = TokenKind.BLOCK_START;
-			else if (twoCharSymbol === '#]') kind = TokenKind.BLOCK_END;
-			tokens.push({ kind, value: twoCharSymbol, line: startLine, col: startCol });
-			advance(2);
-
-			if (kind !== TokenKind.COLLECTION_END) expectingFuncNameAfterParamEnd = false;
-			continue;
+		// 二字操作符
+		if (charLen === 1 && cursor + 1 < sourceCodeLen) {
+			const twoCharSymbol = char + sourceCode[cursor + 1];
+			let kind: TokenKind = TokenKind.ERROR; // 默认无效值
+			switch (twoCharSymbol) {
+				case '==':
+				case '!=':
+				case '>=':
+				case '<=':
+					kind = TokenKind.OPERATOR;
+					break;
+				case '[=':
+					kind = TokenKind.COLLECTION_START;
+					break;
+				case '=]':
+					kind = TokenKind.COLLECTION_END;
+					break;
+				case '[#':
+					kind = TokenKind.BLOCK_START;
+					break;
+				case '#]':
+					kind = TokenKind.BLOCK_END;
+					break;
+			}
+			if (kind !== TokenKind.ERROR) {
+				tokens.push({ kind, value: twoCharSymbol, line: startLine, col: startCol });
+				advance(2);
+				if (kind !== TokenKind.COLLECTION_END) expectingFuncNameAfterParamEnd = false;
+				continue;
+			}
 		}
-
+		// 单字操作符
 		if ('+-*/><@~,'.includes(char)) {
 			let kind: TokenKind = TokenKind.OPERATOR;
 			if (char === ',') kind = TokenKind.COMMA;
 			else if (char === '@') kind = TokenKind.ACCESSOR;
 			else if (char === '~') kind = TokenKind.TERMINATOR;
 			tokens.push({ kind, value: char, line: startLine, col: startCol });
-			advance();
+			advance(charLen);
 			continue;
 		}
+		// 非负数字，十进制整数及小数
+		if (isNumChar(char)) {
+			let i = cursor;
 
-		if (/\d/.test(char)) {
-			let numStr = '';
-			while (cursor < sourceCode.length && /\d/.test(sourceCode[cursor]!)) {
-				numStr += sourceCode[cursor];
-				advance();
+			while (i < sourceCodeLen && isNumChar(sourceCode[i]!)) i++;
+			if (i + 1 < sourceCodeLen && sourceCode[i] === '.' && isNumChar(sourceCode[i + 1]!)) {
+				i++;
+				while (i < sourceCodeLen && isNumChar(sourceCode[i]!)) i++;
 			}
+			const numStr = sourceCode.slice(cursor, i);
+			advance(i - cursor);
+
 			tokens.push({ kind: TokenKind.NUMBER, value: numStr, line: startLine, col: startCol });
 			continue;
 		}
-
+		// 字符串
 		if (char === '"' || char === "'") {
-			const quoteType = char;
-			let str = '';
-			advance();
-			while (cursor < sourceCode.length && sourceCode[cursor] !== quoteType) {
-				str += sourceCode[cursor];
-				advance();
-			}
-			advance();
+			const contentStart = cursor + charLen;
+			let i = contentStart;
+
+			while (i < sourceCodeLen && sourceCode[i] !== char) i++;
+			const str = sourceCode.slice(contentStart, i);
+			advance(i - cursor + charLen);
+
 			tokens.push({ kind: TokenKind.STRING, value: str, line: startLine, col: startCol });
 			continue;
 		}
-
-		if (/[\u4e00-\u9fa5a-zA-Z_]/.test(char) || char === '{') {
-			let identifier = '';
-			let identifierStartLine: number;
-			let identifierStartCol: number;
+		// 标识符
+		if (ID_START_REGEX.test(char) || char === '{') {
+			let identifier = '',
+				identifierStartCol = startCol,
+				i = cursor;
 
 			if (char === '{') {
-				advance(); // 1. 先跳过 '{'
+				const contentStart = (i += charLen); // 跳过 '{' 并记录内容起点
+				identifierStartCol += charLen; // 记录标识符真正的起始列
 
-				// 2. 然后再记录标识符真正的起始位置
-				identifierStartLine = line;
-				identifierStartCol = col;
-
-				while (cursor < sourceCode.length && sourceCode[cursor] !== '}') {
-					identifier += sourceCode[cursor];
-					advance();
-				}
-				advance(); // 跳过 '}'
+				while (i < sourceCodeLen && sourceCode[i] !== '}') i++;
+				identifier = sourceCode.slice(contentStart, i++); // 截取标识并跳过闭合的 '}'，未闭合会多越界一步但安全
 			} else {
-				// 对于普通标识符，直接记录当前位置
-				identifierStartLine = line;
-				identifierStartCol = col;
-
-				while (cursor < sourceCode.length && /[\u4e00-\u9fa5a-zA-Z0-9_]/.test(sourceCode[cursor]!)) {
-					const lookahead = sourceCode.substring(cursor);
-					let isKeywordAhead = false;
-					for (const keyword of sortedKeywords) {
-						if (lookahead.startsWith(keyword)) {
-							isKeywordAhead = true;
-							break;
-						}
-					}
-					if (isKeywordAhead) break;
-					identifier += sourceCode[cursor];
-					advance();
+				parseIdentifier: while (i < sourceCodeLen) {
+					const idChar = charAt(i);
+					if (!ID_CONTINUE_REGEX.test(idChar)) break;
+					// 有粘连的关键字则打断
+					for (const keyword of sortedKeywords) if (sourceCode.startsWith(keyword, i)) break parseIdentifier;
+					i += idChar.length;
 				}
+				identifier = sourceCode.slice(cursor, i);
 			}
+			advance(i - cursor);
 
-			// 最后，统一创建 Token
+			// 统一创建标识符词元
 			if (identifier) {
 				tokens.push({
 					kind: TokenKind.IDENTIFIER,
 					value: identifier,
-					line: identifierStartLine,
+					line: startLine,
 					col: identifierStartCol,
 				});
+
 				if (expectingFuncNameAfterParamEnd) {
 					// 抓到了！这个标识符就是函数名喵！
 					functionNames.add(identifier);
@@ -287,7 +292,7 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 		tokens.push({ kind: TokenKind.ERROR, value: char, line: startLine, col: startCol });
 		console.error('不认识的字符喵:', char);
 
-		advance();
+		advance(charLen);
 	}
 
 	tokens.push({ kind: TokenKind.EOF, value: 'EndOfFile', line, col });
@@ -303,18 +308,17 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 	const sortedFunctionNames = Array.from(functionNames).sort((a, b) => b.length - a.length);
 
 	const repairedTokens: Token[] = [];
+	const lastIndex = tokens.length - 1;
 	let i = 0;
-
-	while (i < tokens.length) {
+	scanTokens: while (i < lastIndex) {
 		const currentToken = tokens[i]!;
-		const nextToken = tokens[i + 1];
-		const nextNextToken = tokens[i + 2];
+		const nextToken = tokens[i + 1]!;
 
 		// 检查是否是需要修复的目标
 		if (
 			currentToken.kind !== TokenKind.KEYWORD_CALL || // 不是 '扒'
-			nextToken?.kind !== TokenKind.IDENTIFIER || // 后面无跟着的标识符
-			nextNextToken?.kind === TokenKind.IDENTIFIER // 后面跟着第二个标识符
+			nextToken.kind !== TokenKind.IDENTIFIER || // 后面无跟着的标识符
+			tokens[i + 2]?.kind === TokenKind.IDENTIFIER // 后面跟着第二个标识符
 		) {
 			// 不是需要修复的目标，或者是一个安全的 `扒 纸箱名 函数名`
 			repairedTokens.push(currentToken);
@@ -323,47 +327,35 @@ function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] 
 		}
 
 		// 找到了一个潜在目标，例如 '扒 纸箱名函数名 ~'
-		const tokenToSplit = nextToken;
-		let foundSplit = false;
+		const { value: valueToSplit, line, col } = nextToken;
 
 		for (const funcName of sortedFunctionNames) {
 			// 检查这个函数名是不是标识符的后缀
-			if (!tokenToSplit.value.endsWith(funcName) || tokenToSplit.value.length <= funcName.length) continue;
+			if (!valueToSplit.endsWith(funcName) || valueToSplit.length <= funcName.length) continue;
 			// 找到了！是它喵！
-			const collectionName = tokenToSplit.value.substring(0, tokenToSplit.value.length - funcName.length);
+			const collectionName = valueToSplit.slice(0, -funcName.length);
 
-			// 1. 创建“纸箱名” Token
-			const collectionToken: Token = {
-				kind: TokenKind.IDENTIFIER,
-				value: collectionName,
-				line: tokenToSplit.line,
-				col: tokenToSplit.col,
-			};
-
-			// 2. 创建“函数名” Token，注意计算新的列号
+			// 创建 “纸箱名” 及 “函数名”
+			const collectionToken: Token = { kind: TokenKind.IDENTIFIER, value: collectionName, line, col };
 			const functionToken: Token = {
 				kind: TokenKind.IDENTIFIER,
 				value: funcName,
-				line: tokenToSplit.line,
-				col: tokenToSplit.col + collectionName.length,
+				line,
+				col: col + collectionName.length,
 			};
 
-			// 3. 将修复后的 Token 推入
-			repairedTokens.push(currentToken); // 扒
-			repairedTokens.push(collectionToken); // 纸箱名
-			repairedTokens.push(functionToken); // 函数名
+			// 推入修复后的版本
+			repairedTokens.push(currentToken /*扒*/, collectionToken /*纸箱名*/, functionToken /*函数名*/);
 
 			i += 2; // 跳过 '扒' 和 '纸箱名函数名' 这两个原始 Token
-			foundSplit = true;
-			break; // 匹配成功，停止搜索
+			continue scanTokens; // 匹配成功，检查下一组词元
 		}
 
 		// 如果没找到匹配，说明它就是一个普通的 `扒 某个变量`，正常推入
-		if (!foundSplit) {
-			repairedTokens.push(currentToken);
-			i++;
-		}
+		repairedTokens.push(currentToken);
+		i++;
 	}
+	if (i <= lastIndex) repairedTokens.push(tokens[i]!); // 补尾
 
 	return repairedTokens;
 }

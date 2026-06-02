@@ -2,13 +2,13 @@
 // src/cli/main.ts - Meaoiu CLI
 
 import { cac } from 'cac';
-import { readFileSync } from 'fs';
+import { readFile } from 'node:fs/promises';
 import { createBuiltInFunctions } from '../core/builtIns.js';
 import { createRuntimeIO } from '../core/run/io.js';
 import { complete } from './tools/completer.js';
 import { diagnose } from './tools/diagnoser.js';
 import { format } from './tools/formatter.js';
-import { definition, hover, references } from './tools/lens.js';
+import { definition, hover, references } from './tools/searcher.js';
 import { run } from './tools/starter.js';
 import { prompt } from './tools/toolUtils.js';
 import { MeaoiuError } from '../core/error.js';
@@ -42,7 +42,7 @@ cli.help(sections => {
 	.option(`--${Option.COMPLETE} <line:col>`, "获取自动补全，格式 '行:列'")
 	.action(async (file: string, options: Record<string, string>) => {
 		try {
-			const sourceCode = readFileSync(file, 'utf-8');
+			const sourceCode = await readFile(file, 'utf-8');
 
 			// 优先命令式选项（诊断 / LSP 式功能）
 			const lspActions: Record<Option, (arg: string) => void> = {
@@ -62,9 +62,7 @@ cli.help(sections => {
 
 			// 默认行为：运行脚本（交互 I/O）
 			const cliIO = createRuntimeIO({
-				onPrint: (formattedString: string) => {
-					console.log(formattedString);
-				},
+				onPrint: (formattedString: string) => console.log(formattedString),
 				onPrompt: prompt,
 				useColor: true,
 			});

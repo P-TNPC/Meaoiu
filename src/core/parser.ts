@@ -90,7 +90,7 @@ export class Parser {
 	// 悄悄话缓存：advance / drainCommentsAhead 会把遇到的 COMMENT 放进这里
 	private commentBuffer: Token[] = [];
 
-	constructor(tokens: Token[], mode = ParseMode.STRICT) {
+	constructor(tokens: Token[], mode: ParseMode = ParseMode.STRICT) {
 		// 确保有 EOF 哨兵，避免边界问题
 		if (!tokens.length || tokens[tokens.length - 1]?.kind !== TokenKind.EOF) {
 			tokens = tokens.concat([{ kind: TokenKind.EOF, value: 'EndOfFile', line: -1, col: -1 }]);
@@ -396,7 +396,7 @@ export class Parser {
 	private parseLogicalExpression(): AST.Expression {
 		let left = this.parseSequenceExpression();
 
-		// 循环处理连续的逻辑操作：A 和 B 都好 或 C 有好
+		// 循环处理连续的逻辑操作：A 和 B 都好 或 C 不坏
 		for (
 			let tokenKind = this.current().kind, isOr: boolean;
 			(isOr = tokenKind === TokenKind.LOGIC_OR) || tokenKind === TokenKind.LOGIC_AND;
@@ -410,11 +410,11 @@ export class Parser {
 			switch (closeToken.kind) {
 				case TokenKind.LOGIC_CLOSE_OR:
 					operator = LogicalOperator.OR;
-					if (!isOr) this.reportError(syntaxErrorFrom(closeToken, '逻辑「和」不能用「有好」闭合喵！'));
+					if (!isOr) this.reportError(syntaxErrorFrom(closeToken, '逻辑「和」不能用「不坏」闭合喵！'));
 					break;
 				case TokenKind.LOGIC_CLOSE_NAND:
 					operator = LogicalOperator.NAND;
-					if (!isOr) this.reportError(syntaxErrorFrom(closeToken, '逻辑「和」不能用「有坏」闭合喵！'));
+					if (!isOr) this.reportError(syntaxErrorFrom(closeToken, '逻辑「和」不能用「不好」闭合喵！'));
 					break;
 				case TokenKind.LOGIC_CLOSE_AND:
 					operator = LogicalOperator.AND;
@@ -428,7 +428,7 @@ export class Parser {
 				case TokenKind.LOGIC_AND:
 					throw errorFrom(closeToken, '你不该看到这个喵！', Phase.INVARIANT);
 				default:
-					const [logic, close, nClose] = isOr ? ['或', '有好', '有坏'] : ['和', '都好', '都坏'];
+					const [logic, close, nClose] = isOr ? ['或', '不坏', '不好'] : ['和', '都好', '都坏'];
 					this.makeErrorTail(TokenKind.ERROR, `逻辑「${logic}」要有「${close}」或「${nClose}」闭合喵！`);
 					continue;
 			}

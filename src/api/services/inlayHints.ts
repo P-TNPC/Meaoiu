@@ -4,7 +4,7 @@ import type * as AST from '../../core/ast.js';
 import { NodeKind } from '../../core/ast.js';
 import { MeaoiuType, typeNames } from '../../core/typedef.js';
 import type { ServiceState } from '../serviceState.js';
-import { buildParentMap, isNodeArray } from '../utils/astUtils.js';
+import { buildParentMap, forEachChild } from '../utils/astUtils.js';
 import { SymbolKind, SymbolTag, type SymbolInfo } from '../utils/symbolTable.js';
 
 /**
@@ -122,12 +122,7 @@ export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 		}
 
 		// 递归遍历子节点
-		for (const key in node) {
-			const value = node[key];
-			if (!value || typeof value !== 'object') continue;
-			if (!Array.isArray(value)) walk(value);
-			else if (isNodeArray(value)) value.forEach(child => walk(child));
-		}
+		forEachChild(node, child => walk(child));
 	}
 	walk(ast);
 

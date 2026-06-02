@@ -8,8 +8,8 @@ import { SymbolKind, SymbolTag } from '../utils/symbolTable.js';
 export type HighlightToken = { line: number; col: number; length: number; tokenType: number; tokenModifiers: number };
 
 // 定义语义 Token 图例
-const tokenTypes = ['variable', 'parameter', 'function'];
-const tokenModifiers = ['declaration', 'modification', 'defaultLibrary', 'deprecated'];
+const tokenTypes = ['variable', 'parameter', 'function'] as const;
+const tokenModifiers = ['declaration', 'modification', 'defaultLibrary', 'deprecated'] as const;
 export const legend = { tokenTypes, tokenModifiers };
 
 const tokenTypeIndexMap = {

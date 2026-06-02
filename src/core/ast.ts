@@ -37,8 +37,8 @@ export const enum NodeKind {
 export type Node = Statement | Expression | Program | ErrorNode;
 
 // 允许的属性类型
-type BaseType = string | number | boolean | null | undefined;
-type NodeValue = BaseType | Node | Node[] | Token[];
+// type BaseType = string | number | boolean | null | undefined;
+// type NodeValue = BaseType | Node | Node[] | Token[];
 
 export interface AstNode<T extends NodeKind = NodeKind> {
 	kind: T;
@@ -48,7 +48,7 @@ export interface AstNode<T extends NodeKind = NodeKind> {
 	endCol: number;
 	leadingComments?: Token[];
 	trailingComments?: Token[];
-	[key: string]: NodeValue;
+	// [key: string]: NodeValue;
 }
 export interface ErrorNode extends AstNode<NodeKind.ErrorNode> {
 	message: string;
@@ -101,7 +101,7 @@ export const enum LogicalOperator {
 
 export interface VariableDeclaration extends AstNode<NodeKind.VariableDeclaration> {
 	identifier: Identifier;
-	initialization?: AssignmentStatement | undefined;
+	initialization: AssignmentStatement | undefined;
 }
 
 export interface AssignmentStatement extends AstNode<NodeKind.AssignmentStatement> {
@@ -117,11 +117,11 @@ export interface FunctionDeclaration extends AstNode<NodeKind.FunctionDeclaratio
 }
 
 export interface ReturnStatement extends AstNode<NodeKind.ReturnStatement> {
-	argument?: Expression | undefined;
+	argument: Expression | undefined;
 }
 
 export interface AmbushStatement extends AstNode<NodeKind.AmbushStatement> {
-	argument?: Expression | undefined;
+	argument: Expression | undefined;
 }
 
 export interface BreakStatement extends AstNode<NodeKind.BreakStatement> {
@@ -160,7 +160,7 @@ export interface BlockExpression extends AstNode<NodeKind.BlockExpression> {
 export interface IfExpression extends AstNode<NodeKind.IfExpression> {
 	condition: Expression;
 	consequent: BlockExpression;
-	alternate?: BlockExpression | IfExpression | undefined;
+	alternate: BlockExpression | IfExpression | undefined;
 }
 
 export interface LoopExpression extends AstNode<NodeKind.LoopExpression> {

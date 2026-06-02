@@ -29,6 +29,7 @@
 
 		// 补充选项
 		"strict": true,
+		// "isolatedDeclarations": true,
 		"isolatedModules": false, // 一些打包器需启用，仅 tsc 则无需
 		"verbatimModuleSyntax": false, // 同上
 		"preserveConstEnums": false, // 此为 false 时，上两项应同为 false

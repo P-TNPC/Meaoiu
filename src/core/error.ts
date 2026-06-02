@@ -66,7 +66,7 @@ const parseIntOrNull = (input: string | undefined): number | null => {
 	return Number.isNaN(n) ? null : n;
 };
 
-export function parseError(message: string, phase = Phase.UNKNOWN): MeaoiuError {
+export function parseError(message: string, phase: Phase = Phase.UNKNOWN): MeaoiuError {
 	const errorParams = {
 		message,
 		phase,

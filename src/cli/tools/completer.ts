@@ -1,7 +1,6 @@
 // src/cli/tools/completer.ts
 
-import { getCompletions, SuggestionKind } from '../../api/services/completions.js';
-import { ServiceState } from '../../api/serviceState.js';
+import { getCompletions, ServiceState, SuggestionKind } from '../../index.js';
 import { parsePosition } from './toolUtils.js';
 
 export function complete(sourceCode: string, posRaw: string): void {

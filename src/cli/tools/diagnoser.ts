@@ -1,7 +1,6 @@
 // src/cli/tools/diagnoser.ts
 
-import { getDiagnostics } from '../../api/services/diagnostics.js';
-import { ServiceState } from '../../api/serviceState.js';
+import { getDiagnostics, ServiceState } from '../../index.js';
 import { formatError } from './toolUtils.js';
 
 export function diagnose(sourceCode: string, filePath: string): void {

@@ -1,9 +1,6 @@
-// src/cli/tools/lens.ts
+// src/cli/tools/searcher.ts
 
-import { findDefinition } from '../../api/services/definition.js';
-import { getHoverInfo } from '../../api/services/hover.js';
-import { findReferences } from '../../api/services/references.js';
-import { ServiceState } from '../../api/serviceState.js';
+import { findDefinition, findReferences, getHoverInfo, ServiceState } from '../../index.js';
 import { parsePosition } from './toolUtils.js';
 
 export function definition(sourceCode: string, filePath: string, posRaw: string): void {
