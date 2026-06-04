@@ -32,8 +32,8 @@ function printIdentifier(node: AST.Identifier): string {
 
 function printNodeContent(node: AST.Node | undefined, options: FormattingOptions): string {
 	if (!node) return '';
-	const nextLevelOptions = { ...options, level: options.level + 1 };
 
+	const nextLevelOptions = { ...options, level: options.level + 1 };
 	const leading = printLeadingComments(node, options);
 
 	let content = '';
@@ -47,14 +47,13 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 				const stmtString = printNodeContent(stmt, options) + '~' + printTrailingComments(stmt);
 				parts.push(stmtString);
 				const nextStmt = body[i + 1];
-				if (nextStmt) {
-					const gap = nextStmt.line - stmt.endLine - 1;
-					const commentCount = nextStmt.leadingComments?.length ?? 0;
-					const hasFunction =
-						stmt.kind === NodeKind.FunctionDeclaration || nextStmt.kind === NodeKind.FunctionDeclaration;
-					const eL = Math.max(gap - commentCount, +hasFunction);
-					if (eL > 0) parts.push(...Array(eL).fill(''));
-				}
+				if (!nextStmt) continue;
+				const gap = nextStmt.line - stmt.endLine - 1;
+				const commentCount = nextStmt.leadingComments?.length ?? 0;
+				const hasFunction =
+					stmt.kind === NodeKind.FunctionDeclaration || nextStmt.kind === NodeKind.FunctionDeclaration;
+				const eL = Math.max(gap - commentCount, +hasFunction);
+				if (eL > 0) parts.push(...Array(eL).fill(''));
 			}
 			return parts.join('\n');
 		}
@@ -215,8 +214,8 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 			break;
 		}
 		default: // 此处已推断为不可达
-			const n: never = node;
-			console.warn(`[格式化器] 目前无法整理此类节点 `, n);
+			const _n: never = node;
+			console.warn(`[格式化器] 目前无法整理此类节点 `, _n);
 	}
 
 	return leading + content;

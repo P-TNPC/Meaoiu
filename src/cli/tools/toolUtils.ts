@@ -5,7 +5,7 @@ import readline from 'node:readline';
 import stringWidth from 'string-width';
 import { MeaoiuError, parseError } from '../../core/error.js';
 
-export function parsePosition(pos: string): { line: number; col: number } {
+export function parsePosition(pos: string): { line: number; col: number; character: number } {
 	const parts = pos.split(':');
 	if (parts.length !== 2) throw parseError("位置参数格式错误，应为 '行:列'，如 '2:3'");
 	const line = Number(parts[0]);
@@ -13,7 +13,7 @@ export function parsePosition(pos: string): { line: number; col: number } {
 	if (!Number.isInteger(line) || !Number.isInteger(col) || line <= 0 || col <= 0) {
 		throw parseError('位置参数格式错误，行和列必须为正整数');
 	}
-	return { line, col };
+	return { line, col, character: col };
 }
 
 export function formatError(error: unknown, sourceCode: string, filePath: string): string {

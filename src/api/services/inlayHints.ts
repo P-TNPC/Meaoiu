@@ -5,15 +5,8 @@ import { NodeKind } from '../../core/ast.js';
 import { MeaoiuType, typeNames } from '../../core/typedef.js';
 import type { ServiceState } from '../serviceState.js';
 import { buildParentMap, forEachChild } from '../utils/astUtils.js';
+import type { Position } from '../utils/lspUtils.js';
 import { SymbolKind, SymbolTag, type SymbolInfo } from '../utils/symbolTable.js';
-
-/**
- * 内联提示的位置
- */
-interface Position {
-	line: number;
-	character: number;
-}
 
 const enum InlayHintKind {
 	Type = 1,
@@ -47,15 +40,16 @@ function extractParamNames(paramsBlock: AST.BlockExpression): string[] {
 	for (const paramStmt of paramsBlock.body) {
 		if (paramStmt.kind === NodeKind.VariableDeclaration) {
 			names.push(paramStmt.identifier.symbol);
-		} else if (paramStmt.kind === NodeKind.ExpressionStatement) {
-			const expr = paramStmt.expression;
-			if (expr.kind === NodeKind.Identifier) {
-				names.push(expr.symbol);
-			} else if (expr.kind === NodeKind.UnaryExpression && expr.argument.kind === NodeKind.Identifier) {
-				names.push(expr.argument.symbol);
-			}
-			// 其他类型的表达式作为参数时没有名字
+			continue;
 		}
+		if (paramStmt.kind !== NodeKind.ExpressionStatement) continue;
+		const expr = paramStmt.expression;
+		if (expr.kind === NodeKind.Identifier) {
+			names.push(expr.symbol);
+		} else if (expr.kind === NodeKind.UnaryExpression && expr.argument.kind === NodeKind.Identifier) {
+			names.push(expr.argument.symbol);
+		}
+		// 其他类型的表达式作为参数时没有名字
 	}
 	return names;
 }
@@ -66,9 +60,8 @@ function extractParamNames(paramsBlock: AST.BlockExpression): string[] {
 export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 	const hints: InlayHint[] = [];
 
-	const { program: ast } = serviceState.parseResult;
+	const ast = serviceState.parseResult.program;
 	const parentMap = buildParentMap(ast); // 构建父节点映射
-
 	const { symbolMap } = serviceState.analyzeResult;
 	const moveMarks = ['_' /*MOVED*/, '' /*NORMAL*/, '!' /*DECAYED*/];
 
@@ -76,16 +69,16 @@ export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 	symbolMap.forEach((symbolInfo, node) => {
 		if (node.kind !== NodeKind.Identifier || symbolInfo.kind === SymbolKind.FUNCTION) return;
 
-		const { name, type } = symbolInfo;
+		const { name, type, valueRef } = symbolInfo;
 		const isUnknown = type === MeaoiuType.UNKNOWN;
-		const isReference = !!symbolInfo.valueRef;
+		const isReference = !!valueRef;
 		if (isUnknown && !isReference) return;
 
 		const { name: ultimateName, tag: ultimateTag } = findUltimateSource(symbolInfo);
 		const isUltimateNormal = ultimateTag === SymbolTag.NORMAL;
 		const isUltimateDecayed = ultimateTag === SymbolTag.DECAYED;
 
-		const moveMark = moveMarks[+isUltimateNormal || +isUltimateDecayed << 1]!;
+		const moveMark = moveMarks[+isUltimateNormal | (+isUltimateDecayed << 1)]!;
 		const sourceName = ultimateName === name ? '' : `${!isUltimateNormal ? '' : '*'}${ultimateName}`;
 		const symbolType = isReference || isUnknown || isUltimateDecayed ? '' : `:${typeNames[type]}`;
 
@@ -98,31 +91,33 @@ export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 
 	// 生成函数参数名提示
 	function walk(node: AST.Node) {
-		if (node.kind === NodeKind.CallExpression && node.args.kind === NodeKind.BlockExpression && node.args.isCollection) {
+		makeHint: if (
+			node.kind === NodeKind.CallExpression &&
+			node.args.kind === NodeKind.BlockExpression &&
+			node.args.isCollection
+		) {
 			const calleeInfo = symbolMap.get(node.callee);
+			if (calleeInfo?.kind !== SymbolKind.FUNCTION || calleeInfo.isBuiltIn || !calleeInfo.declarations[0]) break makeHint;
 
-			if (calleeInfo?.kind === SymbolKind.FUNCTION && !calleeInfo.isBuiltIn && calleeInfo.declarations[0]) {
-				// 从父节点映射找到 FunctionDeclaration
-				const funcDecNode = parentMap.get(calleeInfo.declarations[0]);
+			// 从父节点映射找到 FunctionDeclaration
+			const funcDecNode = parentMap.get(calleeInfo.declarations[0]);
+			if (funcDecNode?.kind !== NodeKind.FunctionDeclaration) break makeHint;
 
-				if (funcDecNode?.kind === NodeKind.FunctionDeclaration) {
-					const paramNames = extractParamNames(funcDecNode.parameters);
-					for (const [index, { line, col }] of node.args.body.entries()) {
-						if (index >= paramNames.length) break;
-						const paramName = paramNames[index];
-						hints.push({
-							position: { line, character: col },
-							label: `${paramName}:`,
-							kind: InlayHintKind.Parameter,
-							paddingRight: true,
-						});
-					}
-				}
+			const paramNames = extractParamNames(funcDecNode.parameters);
+			const limit = Math.min(node.args.body.length, paramNames.length);
+			for (let i = 0; i < limit; i++) {
+				const { line, col: character } = node.args.body[i]!;
+				hints.push({
+					position: { line, character },
+					label: `${paramNames[i]}:`,
+					kind: InlayHintKind.Parameter,
+					paddingRight: true,
+				});
 			}
 		}
 
 		// 递归遍历子节点
-		forEachChild(node, child => walk(child));
+		forEachChild(node, walk);
 	}
 	walk(ast);
 

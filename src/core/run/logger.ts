@@ -1,16 +1,26 @@
 // src/core/run/logger.ts
 
-const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;
-type LevelKey = keyof typeof LEVELS;
-type Level = (typeof LEVELS)[LevelKey];
-
-const level: Level = LEVELS[(process.env['LOG_LEVEL']?.toLowerCase() ?? 'warn') as LevelKey] ?? LEVELS.warn;
-
+export const enum LogLevel {
+	DEBUG = 0,
+	INFO = 1,
+	WARN = 2,
+	ERROR = 3,
+}
+type LevelKey = Lowercase<keyof typeof LogLevel>;
+const DO_NOTHING = () => {};
 const logger: Record<LevelKey, (...args: unknown[]) => void> = {
-	debug: level <= LEVELS.debug ? (...args) => console.debug('[DEBUG]', ...args) : () => {},
-	info: level <= LEVELS.info ? (...args) => console.info('[INFO]', ...args) : () => {},
-	warn: level <= LEVELS.warn ? (...args) => console.warn('[WARN]', ...args) : () => {},
-	error: level <= LEVELS.error ? (...args) => console.error('[ERROR]', ...args) : () => {},
+	debug: DO_NOTHING,
+	info: DO_NOTHING,
+	warn: DO_NOTHING,
+	error: DO_NOTHING,
 };
 
-export default logger;
+export function setLogLevel(level: LogLevel): void {
+	logger.debug = level <= LogLevel.DEBUG ? (...args) => console.debug('[DEBUG]', ...args) : DO_NOTHING;
+	logger.info = level <= LogLevel.INFO ? (...args) => console.info('[INFO]', ...args) : DO_NOTHING;
+	logger.warn = level <= LogLevel.WARN ? (...args) => console.warn('[WARN]', ...args) : DO_NOTHING;
+	logger.error = level <= LogLevel.ERROR ? (...args) => console.error('[ERROR]', ...args) : DO_NOTHING;
+}
+setLogLevel(LogLevel.WARN);
+
+export default logger as Readonly<typeof logger>;

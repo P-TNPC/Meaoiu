@@ -16,7 +16,7 @@ export function diagnose(sourceCode: string, filePath: string): void {
 		].reduce<string[]>((acc, { type, errors }) => {
 			if (!errors.length) return [...acc, type];
 			console.log(`[诊断器] ❌ 发现了 ${errors.length} 个${type}问题:`);
-			errors.forEach(e => console.error(`- ${e}`));
+			for (const e of errors) console.error(`- ${e}`);
 			return acc;
 		}, []);
 

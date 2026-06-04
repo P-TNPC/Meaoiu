@@ -3,11 +3,14 @@
 import type * as AST from '../../core/ast.js';
 import { sortedKeywords } from '../../core/tokenizer.js';
 import type { ServiceState } from '../serviceState.js';
+import type { Position } from '../utils/lspUtils.js';
 import { SymbolKind, type Scope } from '../utils/symbolTable.js';
 
 // 找到指定位置所在的最小作用域
-function findScopeAt(position: { line: number; col: number }, nodeScopeMap: Map<AST.Node, Scope>): Scope | undefined {
-	const { line: targetLine, col: targetCol } = position;
+function findScopeAt(
+	{ line: targetLine, character: targetCol }: Position,
+	nodeScopeMap: Map<AST.Node, Scope>,
+): Scope | undefined {
 	let bestFitNode: AST.Node | undefined;
 
 	for (const node of nodeScopeMap.keys()) {
@@ -40,26 +43,26 @@ const suggestionKinds = {
 	[SymbolKind.PARAMETER]: SuggestionKind.REFERENCE,
 } as const satisfies Record<SymbolKind, SuggestionKind>;
 
-// 获取一个作用域内所有可见的符号
-function getVisibleSymbols(scope: Scope): Suggestion[] {
+// 获取一个作用域内所有可见的符号建议
+function getSymbolSuggestions(scope: Scope): Suggestion[] {
 	const keys = new Set<string>();
-	const symbols: Suggestion[] = [];
+	const suggestions: Suggestion[] = [];
 	for (let current: Scope | undefined = scope; current; current = current.parent) {
 		current.symbols.forEach(({ name: label, kind }) => {
-			const key = `${label}::${kind}`;
+			const key = `${label}\0${kind}`;
 			if (keys.has(key)) return;
 			keys.add(key);
-			symbols.push({ label, kind: suggestionKinds[kind] });
+			suggestions.push({ label, kind: suggestionKinds[kind] });
 		});
 	}
-	return symbols;
+	return suggestions;
 }
 
-export function getCompletions(serviceState: ServiceState, position: { line: number; col: number }): Suggestion[] {
+export function getCompletions(serviceState: ServiceState, position: Position): Suggestion[] {
 	const { rootScope, nodeScopeMap } = serviceState.analyzeResult;
 	const currentScope = findScopeAt(position, nodeScopeMap) ?? rootScope;
 
-	const symbolSuggestions = getVisibleSymbols(currentScope);
+	const symbolSuggestions = getSymbolSuggestions(currentScope);
 	const keywordSuggestions = sortedKeywords.map<Suggestion>(label => ({ label, kind: SuggestionKind.KEYWORD }));
 
 	return [...symbolSuggestions, ...keywordSuggestions.reverse()];

@@ -7,23 +7,41 @@ export type ReferenceLink = { isReference: true; scope: Environment; name: strin
 export type VariableValue = ReferenceLink | MeaoiuValue;
 export type EnvVariable = { value: VariableValue; moved: boolean }; // 仅用于环境内部储存，不传递喵
 
-export const BREAK_SIGNAL = Symbol(); // '累了~'
-export const CONTINUE_SIGNAL = Symbol(); //'偷袭~'
-// 可套娃的带值信号，以囊泡运输的方式将未实现的想法上交喵（动作 [#动作~#]~）
-export class ReturnValue {
-	constructor(public readonly value: Evaluated) {}
-} // '叼回来 [值]~'
-export class LoopValue {
-	constructor(public readonly value: Evaluated) {}
-} // '偷袭 <值>~'
+export const enum SignalKind {
+	RETURN,
+	LOOP,
+	BREAK,
+	CONTINUE,
+}
+abstract class Signal<K extends SignalKind> {
+	constructor(public readonly signalKind: K) {}
+}
+// '叼回来 [值]~'
+export class ReturnValue extends Signal<SignalKind.RETURN> {
+	constructor(public readonly value: Evaluated) {
+		super(SignalKind.RETURN);
+	}
+}
+// '偷袭 <值>~'
+export class LoopValue extends Signal<SignalKind.LOOP> {
+	constructor(public readonly value: Evaluated) {
+		super(SignalKind.LOOP);
+	}
+}
+export class EmptySignal<K extends SignalKind.BREAK | SignalKind.CONTINUE> extends Signal<K> {
+	constructor(kind: K) {
+		super(kind);
+	}
+}
+export const BREAK_SIGNAL = new EmptySignal(SignalKind.BREAK); // '累了~'
+export const CONTINUE_SIGNAL = new EmptySignal(SignalKind.CONTINUE); //'偷袭~'
 
-type Signal = typeof BREAK_SIGNAL | typeof CONTINUE_SIGNAL | ReturnValue | LoopValue;
-export type Evaluated = VariableValue | Signal;
+type ControlSignal = ReturnValue | LoopValue | EmptySignal<SignalKind.BREAK> | EmptySignal<SignalKind.CONTINUE>;
+export type Evaluated = VariableValue | ControlSignal;
 
 export function isReferenceLink(value: Evaluated): value is ReferenceLink {
 	return !!(value as ReferenceLink | null)?.isReference;
 }
-
-export function isSignal(value: Evaluated): value is Signal {
-	return value === CONTINUE_SIGNAL || value instanceof ReturnValue || value === BREAK_SIGNAL || value instanceof LoopValue;
+export function isSignal(value: Evaluated): value is ControlSignal {
+	return value instanceof Signal;
 }

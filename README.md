@@ -2,6 +2,8 @@
 > 知识好喵~
 ## 这是什么喵 (简介)
 这是一门用手糊出来的、不确定是否适合正常人的编程语言喵~ 它不仅有一套**不**需要去挂精神科的**普通**语法，还极其自然地自带了代码格式化、静态诊断、自动补全等一整套工具喵~
+### 不简之介
+想懂就来这看看喵 -> **[喵谕语言半解](LANGUAGE_GUIDE.md)**
 
 ## 怎么领回家喵 (安装)
 别问我为什么，既然是 Node.js 做的破烂，安装当然是用 npm 喵~
@@ -54,7 +56,7 @@ const { syntaxErrors, semanticErrors } = getDiagnostics(serviceState);
 import { getCompletions, findDefinition, getHoverInfo } from 'meaoiu';
 
 // 注意你的光标位置喵
-const pos = { line: 1, col: 4 };
+const pos = { line: 1, character: 4 }; // 对应 LSP 协议，传入的列号名为 character，输出的以实际为准（常用 col）
 
 const completions = getCompletions(serviceState, pos);
 const definition = findDefinition(serviceState, pos);
@@ -92,11 +94,11 @@ function getFormattedCode(sourceCode: string): string
 - **请求参数**：`sourceCode` —— 你乱糟糟的小人乍丶一乂字符串喵~
 - **响应格式**：整理好的小作文字符串喵~（缩进、换行、括号都会变漂亮喵）
 - **使用示例**：
-  ```typescript
-  import { getFormattedCode } from 'meaoiu';
-  const pretty = getFormattedCode('扒【=零食＝]  吃~');
-  console.log(pretty); // 输出 "扒[= 零食 =]吃~"
-  ```
+	```typescript
+	import { getFormattedCode } from 'meaoiu';
+	const pretty = getFormattedCode('扒【=零食＝]  吃~');
+	console.log(pretty); // 输出 "扒[= 零食 =]吃~"
+	```
 
 ### 静态诊断喵 (`getDiagnostics`)
 
@@ -109,73 +111,80 @@ function getDiagnostics(serviceState: ServiceState): Diagnostics
   - `syntaxErrors`：语法错误，比如括号不配对、关键词写错喵~
   - `semanticErrors`：语义错误，比如变量未定义、类型不匹配、重复声明喵~
 - **使用示例**：
-  ```typescript
-  import { getDiagnostics } from 'meaoiu';
-  const { syntaxErrors, semanticErrors } = getDiagnostics(serviceState);
-  syntaxErrors.forEach(err => console.error(`第 ${err.line} 行有语病喵：${err.message}`));
-  ```
+	```typescript
+	import { getDiagnostics } from 'meaoiu';
+	const { syntaxErrors, semanticErrors } = getDiagnostics(serviceState);
+	syntaxErrors.forEach(err => console.error(`第 ${err.line} 行有语病喵：${err.message}`));
+	```
 
 ### 补全建议喵 (`getCompletions`)
 
 ```typescript
-function getCompletions(serviceState: ServiceState, position: { line: number; col: number }): Suggestion[]
+function getCompletions(serviceState: ServiceState, position: { line: number; character: number }): Suggestion[]
 ```
 
 - **请求参数**：
   - `serviceState`：上上面说过了喵~
-  - `position`：光标位置喵~ `line` 和 `col` 的行列号取决于你构造 `StateManager` 时用的 `useOnebased` 喵~
+  - `position`：光标位置喵~ `line` 和 `character` 的行列号取决于你构造 `StateManager` 时用的 `useOnebased` 喵~
 - **响应格式**：`Suggestion[]`，每个建议有 `label`（显示的文本）和 `kind`（类型）喵~ `kind` 是 `SuggestionKind` 枚举值，对应 LSP 的 `CompletionItemKind` 喵~
 - **使用示例**：
-  ```typescript
-  import { getCompletions } from 'meaoiu';
-  const suggestions = getCompletions(serviceState, { line: 2, col: 5 });
-  suggestions.forEach(s => console.log(`可以补全 ${s.label} (种类 ${s.kind})`));
-  ```
+	```typescript
+	import { getCompletions } from 'meaoiu';
+	const suggestions = getCompletions(serviceState, { line: 2, character: 5 });
+	suggestions.forEach(s => console.log(`可以补全 ${s.label} (种类 ${s.kind})`));
+	```
 
 ### 定义追溯喵 (`findDefinition`)
 
 ```typescript
-function findDefinition(serviceState: ServiceState, position: { line: number; col: number }): SymbolInfo | undefined
+function findDefinition(serviceState: ServiceState, position: { line: number; character: number }): SymbolInfo | undefined
 ```
 
 - **请求参数**：同上喵，光标位置喵~
 - **响应格式**：`SymbolInfo` 或 `undefined`（没找到）喵~ `SymbolInfo` 包含名字、种类、类型、声明位置、引用位置等喵~
 - **使用示例**：
-  ```typescript
-  import { findDefinition } from 'meaoiu';
-  const def = findDefinition(serviceState, { line: 3, col: 7 });
-  if (def) console.log(`定义在 L${def.declarations[0]?.line}:${def.declarations[0]?.col}`));
-  ```
+	```typescript
+	import { findDefinition } from 'meaoiu';
+	const def = findDefinition(serviceState, { line: 3, character: 7 });
+	if (def) console.log(`定义在 L${def.declarations[0]?.line}:${def.declarations[0]?.col}`));
+	```
 
 ### 引用调查喵 (`findReferences`)
 
 ```typescript
-function findReferences(serviceState: ServiceState, position: { line: number; col: number }): Identifier[]
+function findReferences(serviceState: ServiceState, position: { line: number; character: number }): Identifier[]
 ```
 
 - **请求参数**：光标位置喵~
 - **响应格式**：`Identifier[]`，该符号的所有名字喵~ 每个 `Identifier` 都有 `line`、`col`、`endLine`、`endCol` 喵~
 - **使用示例**：
-  ```typescript
-  import { findReferences } from 'meaoiu';
-  const refs = findReferences(serviceState, { line: 4, col: 2 });
-  refs.forEach(ref => console.log(`在 L${ref.line}:${ref.col} 被提到`));
-  ```
+	```typescript
+	import { findReferences } from 'meaoiu';
+	const refs = findReferences(serviceState, { line: 4, character: 2 });
+	refs.forEach(ref => console.log(`在 L${ref.line}:${ref.col} 被提到`));
+	```
 
 ### 悬停提示喵 (`getHoverInfo`)
 
 ```typescript
-function getHoverInfo(serviceState: ServiceState, position: { line: number; col: number }): HoverInfo | undefined
+type HoverInfo = {
+	contents: {
+		kind: 'markdown';
+		value: string;
+	};
+	range: Range;
+};
+function getHoverInfo(serviceState: ServiceState, position: { line: number; character: number }): HoverInfo | undefined
 ```
 
 - **请求参数**：光标位置喵~
-- **响应格式**：`HoverInfo` 或 `undefined`喵~ `HoverInfo` 有 `text`（Markdown 字符串）、`line`、`col`、`endLine`、`endCol` 喵~
+- **响应格式**：`HoverInfo` 或 `undefined`喵~ `HoverInfo` 包含 `contents.value`（内容）和 `range`（悬停范围）喵~
 - **使用示例**：
-  ```typescript
-  import { getHoverInfo } from 'meaoiu';
-  const hover = getHoverInfo(serviceState, { line: 5, col: 9 });
-  if (hover) console.log(`悬停内容：${hover.text}`);
-  ```
+	```typescript
+	import { getHoverInfo } from 'meaoiu';
+	const hover = getHoverInfo(serviceState, { line: 5, character: 9 });
+	if (hover) console.log(`悬停内容：${hover.contents.value}`);
+	```
 
 ### 语义高亮喵 (`getHighlightTokens` 和 `legend`)
 
@@ -186,12 +195,12 @@ function getHighlightTokens(serviceState: ServiceState): HighlightToken[]
 - **请求参数**：`serviceState` 喵~
 - **响应格式**：`HighlightToken[]`，每个 token 包含 `line`、`col`、`length`、`tokenType`、`tokenModifiers` 喵~ 配合 `legend` 使用喵~
 - **使用示例**：
-  ```typescript
-  import { getHighlightTokens, legend } from 'meaoiu';
-  const tokens = getHighlightTokens(serviceState);
-  // legend.tokenTypes 和 legend.tokenModifiers 告诉你每个数字有何意味喵
-  tokens.forEach(t => console.log(`在 L${t.line}:${t.col} 有类型 ${legend.tokenTypes[t.tokenType]}`));
-  ```
+	```typescript
+	import { getHighlightTokens, legend } from 'meaoiu';
+	const tokens = getHighlightTokens(serviceState);
+	// legend.tokenTypes 和 legend.tokenModifiers 告诉你每个数字有何意味喵
+	tokens.forEach(t => console.log(`在 L${t.line}:${t.col} 有类型 ${legend.tokenTypes[t.tokenType]}`));
+	```
 
 ### 内联提示喵 (`getInlayHints`)
 
@@ -202,11 +211,18 @@ function getInlayHints(serviceState: ServiceState): InlayHint[]
 - **请求参数**：`serviceState` 喵~
 - **响应格式**：`InlayHint[]`，每个提示有 `position`、`label`、`kind`、`paddingLeft`、`paddingRight` 喵~ `kind` 是 `InlayHintKind.Type` 或 `InlayHintKind.Parameter` 喵~
 - **使用示例**：
-  ```typescript
-  import { getInlayHints } from 'meaoiu';
-  const hints = getInlayHints(serviceState);
-  hints.forEach(h => console.log(`在 L${h.position.line}:${h.position.character} 显示 "${h.label}"`));
-  ```
+	```typescript
+	import { getInlayHints } from 'meaoiu';
+	const hints = getInlayHints(serviceState);
+	hints.forEach(h => console.log(`在 L${h.position.line}:${h.position.character} 显示 "${h.label}"`));
+	```
+
+### 小工具喵 (`rangeOf`)
+
+```typescript
+function rangeOf(location: { line: number; col: number; endLine: number; endCol: number }): Range
+```
+方便对接 LSP 协议喵~ `location` 可以是各种节点或错误喵~
 
 ### 符号表相关喵 (`SymbolKind`, `SymbolTag`, `SymbolInfo`, `Scope`)
 
@@ -223,17 +239,17 @@ function getInlayHints(serviceState: ServiceState): InlayHint[]
 
 ```typescript
 import {
-  StateManager,
-  getFormattedCode,
-  getDiagnostics,
-  getCompletions,
-  findDefinition,
-  findReferences,
-  getHoverInfo,
-  getHighlightTokens,
-  getInlayHints,
-  legend,
-  SymbolKind
+	StateManager,
+	getFormattedCode,
+	getDiagnostics,
+	getCompletions,
+	findDefinition,
+	findReferences,
+	getHoverInfo,
+	getHighlightTokens,
+	getInlayHints,
+	legend,
+	SymbolKind
 } from 'meaoiu';
 
 // 1. 准备状态管理器
@@ -258,22 +274,22 @@ console.log('语法错误：', diag.syntaxErrors.length);
 console.log('语义错误：', diag.semanticErrors.length);
 
 // 6. 补全（假设光标在第 2 行第 3 列）
-const completions = getCompletions(serviceState, { line: 2, col: 3 });
+const completions = getCompletions(serviceState, { line: 2, character: 3 });
 console.log('补全建议：', completions.map(c => c.label));
 
 // 7. 定义查找（假设查找 "加一" 的定义）
-const def = findDefinition(serviceState, { line: 3, col: 5 });
-if (def && def.kind === SymbolKind.FUNCTION) {
-  console.log(`函数 "${def.name}" 定义在 L${def.declarations[0]?.line}`);
+const def = findDefinition(serviceState, { line: 3, character: 5 });
+if (def?.kind === SymbolKind.FUNCTION) {
+	console.log(`函数 "${def.name}" 定义在 L${def.declarations[0]?.line}`);
 }
 
 // 8. 引用查找
-const refs = findReferences(serviceState, { line: 2, col: 3 });
+const refs = findReferences(serviceState, { line: 2, character: 3 });
 console.log(`共有 ${refs.length} 处引用`);
 
 // 9. 悬停
-const hover = getHoverInfo(serviceState, { line: 1, col: 3 });
-if (hover) console.log('悬停内容：', hover.text);
+const hover = getHoverInfo(serviceState, { line: 1, character: 3 });
+if (hover) console.log('悬停内容：', hover.contents.value);
 
 // 10. 语义高亮
 const tokens = getHighlightTokens(serviceState);

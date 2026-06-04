@@ -14,54 +14,39 @@ export type IOConfig = {
 };
 
 // ANSI 颜色代码
-const colors = {
-	reset: '\x1b[0m',
-	yellow: '\x1b[33m',
-	dim: '\x1b[2m',
-	green: '\x1b[32m',
-};
+const enum Color {
+	RESET = '\x1b[0m',
+	YELLOW = '\x1b[33m',
+	DIM = '\x1b[2m',
+	GREEN = '\x1b[32m',
+}
 
 // Meaoiu 字符串转换器
 function toMeaoiuString(value: unknown): string {
 	if (value === true) return '好喵';
 	if (value === false) return '坏喵';
-	if (value === null || value === undefined) return '空碗';
+	if (value == null) return '空碗';
 	if (value !== value) return '不懂';
 	return String(value);
 }
 
 // 上色
 function colorize(value: unknown, strValue: string): string {
-	if (value === null || value === undefined) {
-		return `${colors.dim}${strValue}${colors.reset}`;
-	}
+	if (value == null) return `${Color.DIM}${strValue}${Color.RESET}}`;
+
 	switch (typeof value) {
 		case 'number':
 		case 'boolean':
-			return `${colors.yellow}${strValue}${colors.reset}`;
+			return `${Color.YELLOW}${strValue}${Color.RESET}`;
 		case 'string':
-			return `${colors.green}${strValue}${colors.reset}`;
+			return `${Color.GREEN}${strValue}${Color.RESET}`;
 		default:
 			return strValue;
 	}
 }
 
 // I/O 工厂函数
-export function createRuntimeIO(config: IOConfig): MeaoiuRuntimeIO {
-	const useColor = config.useColor ?? true;
-
-	return {
-		prompt: question => config.onPrompt(question),
-		print: args => {
-			const outputString = args
-				.map(arg => {
-					// 流水线开始：原始值 -> Meaoiu字符串 -> 上色 (若需)
-					const strValue = toMeaoiuString(arg);
-					return useColor ? colorize(arg, strValue) : strValue;
-				})
-				.join(' ');
-
-			config.onPrint(outputString);
-		},
-	};
+export function createRuntimeIO({ onPrint, onPrompt, useColor = true }: IOConfig): MeaoiuRuntimeIO {
+	const argToString = useColor ? (arg: unknown) => colorize(arg, toMeaoiuString(arg)) : toMeaoiuString;
+	return { prompt: onPrompt, print: args => onPrint(args.map(argToString).join(' ')) };
 }

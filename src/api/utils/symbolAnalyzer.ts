@@ -96,7 +96,7 @@ class SymbolAnalyzer {
 			case NodeKind.Program:
 			case NodeKind.BlockExpression: {
 				this.enterScope();
-				node.body.forEach(n => this.visit(n));
+				for (const n of node.body) this.visit(n);
 				this.leaveScope();
 				break;
 			}
@@ -157,8 +157,8 @@ class SymbolAnalyzer {
 			case NodeKind.ErrorNode:
 				break;
 			default: // 此处已推断为不可达
-				const n: never = node;
-				console.warn(`[符号分析器] 发现不可描述的节点 `, n);
+				const _n: never = node;
+				console.warn(`[符号分析器] 发现不可描述的节点 `, _n);
 		}
 	}
 
@@ -171,25 +171,26 @@ class SymbolAnalyzer {
 				// 情况 1: [= a 就是 1 =] 或 [= 蹭 a =]
 				// 这种语句本身就包含了声明逻辑，直接 visit 即可
 				this.visitVariableDeclaration(paramStmt);
-			} else if (paramStmt.kind === NodeKind.ExpressionStatement) {
-				const expr = paramStmt.expression;
+				continue;
+			}
+			if (paramStmt.kind !== NodeKind.ExpressionStatement) continue;
+			const expr = paramStmt.expression;
 
-				if (expr.kind === NodeKind.Identifier) {
-					// 情况 2: [= a =]
-					// 手动将 'a' 声明为 'parameter'
-					this.declare(expr.symbol, SymbolKind.PARAMETER, SymbolTag.NORMAL, MeaoiuType.UNKNOWN, expr);
-					this.visitIdentifier(expr); // 访问它，以便高亮和引用查找
-				} else if (expr.kind === NodeKind.UnaryExpression && expr.argument.kind === NodeKind.Identifier) {
-					// 情况 3: [= 高仿 a =] 或 [= 抢走 a =]
-					const idNode = expr.argument;
-					// 手动将 'a' 声明为 'parameter'
-					this.declare(idNode.symbol, SymbolKind.PARAMETER, SymbolTag.NORMAL, MeaoiuType.UNKNOWN, idNode);
-					this.visit(expr); // 访问整个 '高仿 a' 表达式
-				} else {
-					// 情况 4: [= 1+2 =] 或 [= '字面量' =] 或 [= a@1 =]
-					// 没有名字，只访问表达式，不声明
-					this.visit(expr);
-				}
+			if (expr.kind === NodeKind.Identifier) {
+				// 情况 2: [= a =]
+				// 手动将 'a' 声明为 'parameter'
+				this.declare(expr.symbol, SymbolKind.PARAMETER, SymbolTag.NORMAL, MeaoiuType.UNKNOWN, expr);
+				this.visitIdentifier(expr); // 访问它，以便高亮和引用查找
+			} else if (expr.kind === NodeKind.UnaryExpression && expr.argument.kind === NodeKind.Identifier) {
+				// 情况 3: [= 高仿 a =] 或 [= 抢走 a =]
+				const idNode = expr.argument;
+				// 手动将 'a' 声明为 'parameter'
+				this.declare(idNode.symbol, SymbolKind.PARAMETER, SymbolTag.NORMAL, MeaoiuType.UNKNOWN, idNode);
+				this.visit(expr); // 访问整个 '高仿 a' 表达式
+			} else {
+				// 情况 4: [= 1+2 =] 或 [= '字面量' =] 或 [= a@1 =]
+				// 没有名字，只访问表达式，不声明
+				this.visit(expr);
 			}
 		}
 
@@ -203,21 +204,20 @@ class SymbolAnalyzer {
 		let valueRef: SymbolInfo | undefined; // 存储引用的符号
 		let tag = SymbolTag.NORMAL;
 
-		if (init) {
+		init: if (init) {
 			this.visit(init.value);
 			inferredType = this.inferExpressionType(init.value);
+			if (init.value.kind !== NodeKind.Identifier) break init;
 
-			if (init.value.kind === NodeKind.Identifier) {
-				const valueSymbol = this.symbolMap.get(init.value);
-				if (valueSymbol?.tag === SymbolTag.DECAYED) tag = valueSymbol.tag; // 衰变传染
+			const valueSymbol = this.symbolMap.get(init.value);
+			if (valueSymbol?.tag === SymbolTag.DECAYED) tag = valueSymbol.tag; // 衰变传染
 
-				if (init.operator === AssignmentOperator.REFERENCE)
-					valueRef = valueSymbol; // 只有 '就是' (Reference) 才创建静态引用链
-				else if (init.operator === AssignmentOperator.MOVE) this.markAsMoved(init.value.symbol);
+			// 「就是」创建静态引用或「才是」标记为已移动
+			if (init.operator === AssignmentOperator.REFERENCE) valueRef = valueSymbol;
+			else if (init.operator === AssignmentOperator.MOVE) this.markAsMoved(init.value.symbol);
 
-				if (tag !== SymbolTag.NORMAL) {
-					this.errors.push(semanticErrorFrom(identifier, `这个 '${identifier.symbol}' 没有灵魂喵！`));
-				}
+			if (tag !== SymbolTag.NORMAL) {
+				this.errors.push(semanticErrorFrom(identifier, `这个 '${identifier.symbol}' 没有灵魂喵！`));
 			}
 		}
 		this.declare(identifier.symbol, SymbolKind.VARIABLE, tag, inferredType, identifier, valueRef);
@@ -228,36 +228,30 @@ class SymbolAnalyzer {
 		this.visit(value);
 		const valueType = this.inferExpressionType(value);
 
-		if (assignee.kind !== NodeKind.Identifier) this.visit(assignee);
+		assign: if (assignee.kind !== NodeKind.Identifier) this.visit(assignee);
 		else {
 			this.visitIdentifier(assignee, false);
 			const originalSymbol = this.symbolMap.get(assignee); // 取得原始符号
+			if (!originalSymbol) break assign;
 
-			if (originalSymbol) {
-				const symbol = { ...originalSymbol }; // 复制为新符号
-				symbol.type = valueType;
-				const valueSymbol = this.symbolMap.get(value);
-				if (valueSymbol?.tag === SymbolTag.DECAYED) symbol.tag = valueSymbol.tag; // 衰变传染
+			const symbol = { ...originalSymbol }; // 复制为新符号
+			symbol.type = valueType;
+			const valueSymbol = this.symbolMap.get(value);
+			if (valueSymbol?.tag === SymbolTag.DECAYED) symbol.tag = valueSymbol.tag; // 衰变传染
 
-				if (
-					operator === AssignmentOperator.REFERENCE &&
-					value.kind === NodeKind.Identifier &&
-					symbol.tag !== SymbolTag.DECAYED
-				) {
-					// '就是' (Reference) 为未衰变符号更新静态引用链
-					symbol.valueRef = valueSymbol;
-				} else {
-					// '才是' (Move) 和 '就像' (Copy) 会打断旧的引用链，符号衰变也会使引用失效
-					symbol.valueRef = undefined;
-				}
+			symbol.valueRef =
+				operator === AssignmentOperator.REFERENCE &&
+				value.kind === NodeKind.Identifier &&
+				symbol.tag !== SymbolTag.DECAYED
+					? valueSymbol // '就是' (Reference) 为未衰变符号更新静态引用链
+					: undefined; // '才是' (Move) 和 '就像' (Copy) 会打断旧的引用链，符号衰变也会使引用失效
 
-				// 更新符号表
-				this.findSymbolScope(assignee.symbol)!.symbols.set(assignee.symbol, symbol);
-				this.symbolMap.set(assignee, symbol);
+			// 更新符号表
+			this.findSymbolScope(assignee.symbol)!.symbols.set(assignee.symbol, symbol);
+			this.symbolMap.set(assignee, symbol);
 
-				if (symbol.tag !== SymbolTag.NORMAL) {
-					this.errors.push(semanticErrorFrom(assignee, `被移过的 '${assignee.symbol}' 失效了喵！`));
-				}
+			if (symbol.tag !== SymbolTag.NORMAL) {
+				this.errors.push(semanticErrorFrom(assignee, `被移过的 '${assignee.symbol}' 失效了喵！`));
 			}
 		}
 
@@ -454,22 +448,21 @@ class SymbolAnalyzer {
 
 		// 3. 追踪引用链，检查整条链上的“已移动”状态
 		for (let current: SymbolInfo | undefined = foundSymbol; current; current = current.valueRef) {
-			if (current.tag !== SymbolTag.NORMAL) {
-				// 创建一个已衰变的符号对象
-				foundSymbol = {
-					...foundSymbol,
-					tag: SymbolTag.DECAYED,
-					type: MeaoiuType.UNKNOWN,
-				};
-				// 虚假的引用，仅用于提示
-				foundSymbol.valueRef = {
-					...foundSymbol,
-					name: current.name, // 保持原始名称
-					valueRef: undefined,
-				};
-				this.currentScope.symbols.set(name, foundSymbol);
-				break;
-			}
+			if (current.tag === SymbolTag.NORMAL) continue;
+			// 创建一个已衰变的符号对象
+			foundSymbol = {
+				...foundSymbol,
+				tag: SymbolTag.DECAYED,
+				type: MeaoiuType.UNKNOWN,
+			};
+			// 虚假的引用，仅用于提示
+			foundSymbol.valueRef = {
+				...foundSymbol,
+				name: current.name, // 保持原始名称
+				valueRef: undefined,
+			};
+			this.currentScope.symbols.set(name, foundSymbol);
+			break;
 		}
 
 		return foundSymbol;

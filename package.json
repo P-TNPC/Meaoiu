@@ -1,6 +1,6 @@
 {
 	"name": "meaoiu",
-	"version": "0.0.28",
+	"version": "0.0.29",
 	"description": "盒中有识算之聪慧喵，告世人云：喵谕者，古今地外皆曰好喵，乃奇民要术喵~",
 	"license": "MIT",
 	"author": {
@@ -15,8 +15,12 @@
 	"bin": {
 		"meaoiu": "dist/cli/main.js"
 	},
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
 	"files": [
 		"dist"
 	],

@@ -92,7 +92,7 @@ export function findIdentifierAt(ast: AST.Node, line: number, col: number): AST.
 		}
 
 		// 递归遍历所有子节点
-		forEachChild(node, child => walk(child));
+		forEachChild(node, walk);
 	}
 	walk(ast);
 

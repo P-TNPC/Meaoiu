@@ -15,7 +15,17 @@ import {
 } from '../typedef.js';
 import { autoKey, Environment } from './environment.js';
 import logger from './logger.js';
-import { BREAK_SIGNAL, CONTINUE_SIGNAL, type Evaluated, isReferenceLink, isSignal, LoopValue, ReturnValue } from './value.js';
+import {
+	BREAK_SIGNAL,
+	CONTINUE_SIGNAL,
+	type EmptySignal,
+	type Evaluated,
+	isReferenceLink,
+	isSignal,
+	LoopValue,
+	ReturnValue,
+	SignalKind,
+} from './value.js';
 
 type BoundaryEnv = Partial<Record<(AST.ReturnStatement | AST.AmbushStatement)['kind'], Environment>>;
 const enum NewEnvMode {
@@ -35,7 +45,7 @@ const ReturnOrAmbush = {
 	},
 } as const satisfies Record<
 	keyof BoundaryEnv,
-	{ emptySignal: ReturnValue | typeof CONTINUE_SIGNAL; signalWith: (value: Evaluated) => ReturnValue | LoopValue }
+	{ emptySignal: ReturnValue | EmptySignal<SignalKind.CONTINUE>; signalWith: (value: Evaluated) => ReturnValue | LoopValue }
 >;
 
 const resolveValue = Environment.resolveValue;
@@ -191,8 +201,8 @@ export async function evaluate(
 			case NodeKind.ComparisonExpression: {
 				const { expressions, operators } = node;
 
-				let overallResult = true;
-				let currentLeftVal: any = resolveValue(await evaluate(expressions[0]!, env, builtIns, boundaryEnv));
+				let overallResult = true,
+					currentLeftVal: any = resolveValue(await evaluate(expressions[0]!, env, builtIns, boundaryEnv));
 
 				for (let i = 0; i < operators.length; i++) {
 					const opToken = operators[i]!,
@@ -275,7 +285,7 @@ export async function evaluate(
 			}
 			case NodeKind.LoopExpression: {
 				const body = node.body;
-				while (true) {
+				loop: for (;;) {
 					const loopEnv = new Environment(env);
 					const result = await evaluate(
 						body,
@@ -285,10 +295,20 @@ export async function evaluate(
 						NewEnvMode.LOOP,
 					);
 
-					if (result === CONTINUE_SIGNAL) continue; // '偷袭~' -> 继续下次循环
-					if (result === BREAK_SIGNAL) break; // '累了~' -> 退出循环
-					if (result instanceof LoopValue) return result.value; // '偷袭 <值>~' -> 退出并返回值
-					if (result instanceof ReturnValue) return result; // '叼回来 [值]~' -> 退出函数
+					if (!isSignal(result)) continue;
+					switch (result.signalKind) {
+						case SignalKind.CONTINUE:
+							continue; // '偷袭~' -> 继续下次循环
+						case SignalKind.BREAK:
+							break loop; // '累了~' -> 退出循环
+						case SignalKind.LOOP:
+							return result.value; // '偷袭 <值>~' -> 退出并返回值
+						case SignalKind.RETURN:
+							return result; // '叼回来 [值]~' -> 退出函数
+						default:
+							const _r: never = result;
+							throw runtimeErrorFrom(node, `不理解「${_r}」是什么要求喵！`);
+					}
 					// break; // 让循环变懒（不主动重复）
 				}
 				return null; // '累了' 退出后，循环表达式返回“空碗”
@@ -405,8 +425,8 @@ export async function evaluate(
 			case NodeKind.ErrorNode:
 				throw runtimeErrorFrom(node, node.message);
 			default: // 此处已推断为不可达
-				const n: never = node;
-				throw runtimeErrorFrom(n, `不支持的节点类型喵！${n}`);
+				const _n: never = node;
+				throw runtimeErrorFrom(_n, `不支持的节点类型喵！${_n}`);
 		}
 	} catch (err) {
 		if (err instanceof MeaoiuError) throw err;
@@ -427,8 +447,8 @@ async function _evaluateCollectionElement(
 ): Promise<number> {
 	const expr = stmt.expression;
 
-	let name: string | undefined;
-	let operator: AssignmentOperator = AssignmentOperator.COPY;
+	let name: string | undefined,
+		operator: AssignmentOperator = AssignmentOperator.COPY;
 
 	if (expr.kind === NodeKind.Identifier) {
 		// 元素是 `a` -> 声明为 `a`，并创建引用

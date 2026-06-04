@@ -4,14 +4,15 @@
 import { cac } from 'cac';
 import { readFile } from 'node:fs/promises';
 import { createBuiltInFunctions } from '../core/builtIns.js';
+import { MeaoiuError } from '../core/error.js';
 import { createRuntimeIO } from '../core/run/io.js';
+import { LogLevel, setLogLevel } from '../core/run/logger.js';
 import { complete } from './tools/completer.js';
 import { diagnose } from './tools/diagnoser.js';
 import { format } from './tools/formatter.js';
 import { definition, hover, references } from './tools/searcher.js';
 import { run } from './tools/starter.js';
 import { prompt } from './tools/toolUtils.js';
-import { MeaoiuError } from '../core/error.js';
 
 const enum Option {
 	DIAGNOSE = 'diagnose',
@@ -20,9 +21,10 @@ const enum Option {
 	REFERENCES = 'references',
 	HOVER = 'hover',
 	COMPLETE = 'complete',
+	DEBUG = 'debug',
 }
 
-const cli = cac('meaoiu').version('0.0.27');
+const cli = cac('meaoiu').version('0.0.29');
 
 cli.help(sections => {
 	sections.splice(1, 0, {
@@ -40,24 +42,26 @@ cli.help(sections => {
 	.option(`--${Option.REFERENCES} <line:col>`, "查找引用，格式 '行:列'")
 	.option(`--${Option.HOVER} <line:col>`, "悬停信息，格式 '行:列'")
 	.option(`--${Option.COMPLETE} <line:col>`, "获取自动补全，格式 '行:列'")
+	.option(`--${Option.DEBUG}`, '运行 Meaoiu 脚本并输出调试日志')
 	.action(async (file: string, options: Record<string, string>) => {
 		try {
 			const sourceCode = await readFile(file, 'utf-8');
 
 			// 优先命令式选项（诊断 / LSP 式功能）
-			const lspActions: Record<Option, (arg: string) => void> = {
+			const lspActions: Record<Option, (arg: string) => void | boolean> = {
 				[Option.DIAGNOSE]: () => diagnose(sourceCode, file),
-				[Option.FORMAT]: () => format(sourceCode, file),
+				[Option.FORMAT]: () => void format(sourceCode, file),
 				[Option.DEFINITION]: pos => definition(sourceCode, file, pos),
 				[Option.REFERENCES]: pos => references(sourceCode, file, pos),
 				[Option.HOVER]: pos => hover(sourceCode, pos),
 				[Option.COMPLETE]: pos => complete(sourceCode, pos),
+				[Option.DEBUG]: () => (setLogLevel(LogLevel.DEBUG), /* 是否继续执行 */ true),
 			};
 
 			// 找出第一个被设置的选项（优先级顺序按 keys 顺序）
 			for (const [key, action] of Object.entries(lspActions)) {
 				const value = options[key];
-				if (value) return action(String(value));
+				if (value && !action(value)) return;
 			}
 
 			// 默认行为：运行脚本（交互 I/O）

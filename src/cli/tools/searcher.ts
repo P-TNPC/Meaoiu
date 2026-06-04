@@ -28,6 +28,6 @@ export function hover(sourceCode: string, posRaw: string): void {
 	const hoverInfo = getHoverInfo(new ServiceState(0, sourceCode), pos);
 	if (!hoverInfo) return console.log(`[悬停] 在 '${posRaw}' 位置找不到可显示的信息。`);
 	console.log('---- 悬停信息 ----');
-	console.log(hoverInfo.text);
+	console.log(hoverInfo.contents.value);
 	console.log('-----------------');
 }

@@ -8,8 +8,8 @@ import { SymbolKind, SymbolTag } from '../utils/symbolTable.js';
 export type HighlightToken = { line: number; col: number; length: number; tokenType: number; tokenModifiers: number };
 
 // 定义语义 Token 图例
-const tokenTypes = ['variable', 'parameter', 'function'] as const;
-const tokenModifiers = ['declaration', 'modification', 'defaultLibrary', 'deprecated'] as const;
+const tokenTypes = ['variable', 'parameter', 'function'];
+const tokenModifiers = ['declaration', 'modification', 'defaultLibrary', 'deprecated'];
 export const legend = { tokenTypes, tokenModifiers };
 
 const tokenTypeIndexMap = {
@@ -21,33 +21,31 @@ const tokenTypeIndexMap = {
 export function getHighlightTokens(serviceState: ServiceState): HighlightToken[] {
 	const highlightTokens: HighlightToken[] = [];
 
-	const { program: ast } = serviceState.parseResult;
-	const parentMap = buildParentMap(ast);
-
+	const parentMap = buildParentMap(serviceState.parseResult.program);
 	const { symbolMap } = serviceState.analyzeResult;
 
-	symbolMap.forEach(symbolInfo => {
-		const tokenTypeIndex = tokenTypeIndexMap[symbolInfo.kind];
+	symbolMap.forEach(({ kind: symbolKind, tag: symbolTag, name: symbolName, isBuiltIn, declarations, references }) => {
+		const tokenTypeIndex = tokenTypeIndexMap[symbolKind];
 
 		// 收集声明
-		symbolInfo.declarations.forEach(dec => {
+		for (const dec of declarations) {
 			const modifiers = [tokenModifiers.indexOf('declaration')];
-			if (symbolInfo.isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
+			if (isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
 			const modBitmask = modifiers.reduce((a, b) => a | (1 << b), 0);
 			highlightTokens.push({
 				line: dec.line,
 				col: dec.col,
-				length: symbolInfo.name.length,
+				length: symbolName.length,
 				tokenType: tokenTypeIndex,
 				tokenModifiers: modBitmask,
 			});
-		});
+		}
 
 		// 收集引用
-		symbolInfo.references.forEach(ref => {
+		for (const ref of references) {
 			const modifiers: number[] = [];
-			if (symbolInfo.isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
-			if (symbolInfo.tag === SymbolTag.DECAYED) modifiers.push(tokenModifiers.indexOf('deprecated'));
+			if (isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
+			if (symbolTag === SymbolTag.DECAYED) modifiers.push(tokenModifiers.indexOf('deprecated'));
 			const parent = parentMap.get(ref);
 			if (parent?.kind === NodeKind.AssignmentStatement && parent.assignee === ref) {
 				modifiers.push(tokenModifiers.indexOf('modification'));
@@ -60,7 +58,7 @@ export function getHighlightTokens(serviceState: ServiceState): HighlightToken[]
 				tokenType: tokenTypeIndex,
 				tokenModifiers: modBitmask,
 			});
-		});
+		}
 	});
 
 	// 严格按照行列顺序，将收集到的 token 排序！
