@@ -1,17 +1,30 @@
 {
 	"name": "meaoiu",
-	"version": "0.0.29",
+	"version": "0.1.0",
 	"description": "盒中有识算之聪慧喵，告世人云：喵谕者，古今地外皆曰好喵，乃奇民要术喵~",
+	"keywords": [
+		"meaoiu",
+		"language",
+		"interpreter",
+		"cli",
+		"esolang",
+		"喵谕"
+	],
 	"license": "MIT",
 	"author": {
 		"name": "TNPC",
 		"email": "TNPC@TNPC.space"
 	},
+	"homepage": "https://github.com/P-TNPC/Meaoiu#readme",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/P-TNPC/Meaoiu.git"
 	},
+	"bugs": {
+		"url": "https://github.com/P-TNPC/Meaoiu/issues"
+	},
 	"type": "module",
+	"sideEffects": false,
 	"bin": {
 		"meaoiu": "dist/cli/main.js"
 	},
@@ -22,11 +35,18 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"LANGUAGE_GUIDE.md"
 	],
+	"engines": {
+		"node": ">=20.0.0"
+	},
 	"scripts": {
 		"clean": "rimraf dist",
-		"build": "npm run clean && tsc --stableTypeOrdering"
+		"prebuild": "npm run clean",
+		"build": "tsc --stableTypeOrdering",
+		"postbuild": "node write-cli-version.js",
+		"prepublishOnly": "npm run build"
 	},
 	"devDependencies": {
 		"@types/node": "^25.9.1",

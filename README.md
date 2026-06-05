@@ -28,6 +28,8 @@ npm install -g meaoiu
 - **--complete <行:列>**：补全建议喵~ 不想打字就用这个喵~ ~~（可能要打更多字）~~
 
 ## 搞半天想自己拼喵 (编程接口使用)
+>（这里抄：[Meaoiu-LanguageServer](https://github.com/P-TNPC/Meaoiu-LanguageServer)）
+
 想自己做抓板配件？真上进喵~ 那些 LSP 零件都把肚皮露出来了喵~
 灵魂就在 `StateManager` 和 `ServiceState` 喵~
 
@@ -86,7 +88,6 @@ const hover = getHoverInfo(serviceState, pos);
 - `analyzeResult: AnalyzeResult`：符号分析结果，里面有 `rootScope`、`symbolMap`、`nodeScopeMap` 和 `errors`（语义错误）喵~
 
 ### 格式整理喵 (`getFormattedCode`)
-
 ```typescript
 function getFormattedCode(sourceCode: string): string
 ```
@@ -101,15 +102,14 @@ function getFormattedCode(sourceCode: string): string
 	```
 
 ### 静态诊断喵 (`getDiagnostics`)
-
 ```typescript
 function getDiagnostics(serviceState: ServiceState): Diagnostics
 ```
 
 - **请求参数**：`serviceState` —— [上面](#灵魂玩具喵-statemanager-与-servicestate)说过了喵~
 - **响应格式**：`{ syntaxErrors: MeaoiuError[], semanticErrors: MeaoiuError[] }` 喵~
-  - `syntaxErrors`：语法错误，比如括号不配对、关键词写错喵~
-  - `semanticErrors`：语义错误，比如变量未定义、类型不匹配、重复声明喵~
+	- `syntaxErrors`：语法错误，比如括号不配对、关键词写错喵~
+	- `semanticErrors`：语义错误，比如变量未定义、类型不匹配、重复声明喵~
 - **使用示例**：
 	```typescript
 	import { getDiagnostics } from 'meaoiu';
@@ -118,14 +118,13 @@ function getDiagnostics(serviceState: ServiceState): Diagnostics
 	```
 
 ### 补全建议喵 (`getCompletions`)
-
 ```typescript
 function getCompletions(serviceState: ServiceState, position: { line: number; character: number }): Suggestion[]
 ```
 
 - **请求参数**：
-  - `serviceState`：上上面说过了喵~
-  - `position`：光标位置喵~ `line` 和 `character` 的行列号取决于你构造 `StateManager` 时用的 `useOnebased` 喵~
+	- `serviceState`：上上面说过了喵~
+	- `position`：光标位置喵~ `line` 和 `character` 的行列号取决于你构造 `StateManager` 时用的 `useOnebased` 喵~
 - **响应格式**：`Suggestion[]`，每个建议有 `label`（显示的文本）和 `kind`（类型）喵~ `kind` 是 `SuggestionKind` 枚举值，对应 LSP 的 `CompletionItemKind` 喵~
 - **使用示例**：
 	```typescript
@@ -135,7 +134,6 @@ function getCompletions(serviceState: ServiceState, position: { line: number; ch
 	```
 
 ### 定义追溯喵 (`findDefinition`)
-
 ```typescript
 function findDefinition(serviceState: ServiceState, position: { line: number; character: number }): SymbolInfo | undefined
 ```
@@ -150,7 +148,6 @@ function findDefinition(serviceState: ServiceState, position: { line: number; ch
 	```
 
 ### 引用调查喵 (`findReferences`)
-
 ```typescript
 function findReferences(serviceState: ServiceState, position: { line: number; character: number }): Identifier[]
 ```
@@ -165,7 +162,6 @@ function findReferences(serviceState: ServiceState, position: { line: number; ch
 	```
 
 ### 悬停提示喵 (`getHoverInfo`)
-
 ```typescript
 type HoverInfo = {
 	contents: {
@@ -187,7 +183,6 @@ function getHoverInfo(serviceState: ServiceState, position: { line: number; char
 	```
 
 ### 语义高亮喵 (`getHighlightTokens` 和 `legend`)
-
 ```typescript
 function getHighlightTokens(serviceState: ServiceState): HighlightToken[]
 ```
@@ -203,7 +198,6 @@ function getHighlightTokens(serviceState: ServiceState): HighlightToken[]
 	```
 
 ### 内联提示喵 (`getInlayHints`)
-
 ```typescript
 function getInlayHints(serviceState: ServiceState): InlayHint[]
 ```
@@ -217,8 +211,47 @@ function getInlayHints(serviceState: ServiceState): InlayHint[]
 	hints.forEach(h => console.log(`在 L${h.position.line}:${h.position.character} 显示 "${h.label}"`));
 	```
 
-### 小工具喵 (`rangeOf`)
+### 执行喵 (`execute`)
+让编好的喵谕跑起来喵~ 
+```typescript
+async function execute(
+	sourceCode: string,
+	ioConfig: {
+		onPrint: (formattedString: string) => void;
+		onPrompt: (question: string) => Promise<string>;
+		styleize?: ((value: unknown, strValue: string) => string) | boolean;
+	},
+	options?: { useOnebased?: boolean, logLevel?: number },
+): Promise<void>
+```
+- **请求参数**：
+	- `ioConfig`：必须传入输入输出函数，可以设置样式，默认（`true`）用 ANSI 颜色输出喵~
+	- `options`：决定报错用什么坐标和输出多少废话（0 debug 1 info 2 warn 3 error）喵~
+- **使用示例**：
+	```typescript
+	import { execute } from 'meaoiu';
+	import readline from 'node:readline';
+	const ioConfig = {
+		onPrint: console.log,
+		onPrompt: question => {
+			const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+			return new Promise(resolve => rl.question(question, answer => {
+				rl.close();
+				resolve(answer);
+			}));
+		},
+		styleize: (value, strValue) => value == null ? `💥${strValue}💥` : strValue,
+	};
+	try {
+		await execute("蹭饭~扒[=饭, '好了喵~'=]喵~", ioConfig, { useOnebased: true, logLevel: 3 });
+		// 输出：💥空碗💥 好了喵~
+	} catch (error) {
+		console.error(`坏了喵：${error}`);
+		process.exit(1);
+	}
+	```
 
+### 小工具喵 (`rangeOf`)
 ```typescript
 function rangeOf(location: { line: number; col: number; endLine: number; endCol: number }): Range
 ```

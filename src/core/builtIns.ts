@@ -184,7 +184,6 @@ export function checkArgsForBuiltIn(builtIn: MeaoiuBuiltIns[BuiltInName], args: 
 		if (paramType.length < 1) continue;
 
 		const argType = getMeaoiuType(args[i]!);
-
 		for (const type of paramType) if (type === argType) continue check;
 
 		return `第 ${i + 1} 个贡品是「${typeNames[argType]}」，但想要的是「${paramType

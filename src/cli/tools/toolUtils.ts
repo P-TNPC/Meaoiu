@@ -3,7 +3,7 @@
 import path from 'node:path';
 import readline from 'node:readline';
 import stringWidth from 'string-width';
-import { MeaoiuError, parseError } from '../../core/error.js';
+import { MeaoiuError, parseError } from '../../index.js';
 
 export function parsePosition(pos: string): { line: number; col: number; character: number } {
 	const parts = pos.split(':');
@@ -53,10 +53,7 @@ export function formatError(error: unknown, sourceCode: string, filePath: string
 }
 
 export async function prompt(question: string): Promise<string> {
-	const rl = readline.createInterface({
-		input: process.stdin,
-		output: process.stdout,
-	});
+	const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 	return new Promise(resolve => {
 		rl.question(question, answer => {
 			rl.close();

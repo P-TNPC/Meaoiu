@@ -6,11 +6,15 @@ export type MeaoiuRuntimeIO = {
 	prompt: (question: string) => Promise<string>;
 };
 
-// 工厂函数的配置项
+type Styleizer = typeof colorize;
+/**
+ * 输入输出配置
+ */
 export type IOConfig = {
-	onPrint: (formattedString: string) => void; // 底层打印回调
-	onPrompt: (question: string) => Promise<string>; // 底层提问回调
-	useColor?: boolean; // 是否上色
+	onPrint: (formattedString: string) => void;
+	onPrompt: (question: string) => Promise<string>;
+	/** 为输出的各类值附加样式，默认以ANSI 颜色输出，@default true */
+	styleize?: Styleizer | boolean;
 };
 
 // ANSI 颜色代码
@@ -46,7 +50,8 @@ function colorize(value: unknown, strValue: string): string {
 }
 
 // I/O 工厂函数
-export function createRuntimeIO({ onPrint, onPrompt, useColor = true }: IOConfig): MeaoiuRuntimeIO {
-	const argToString = useColor ? (arg: unknown) => colorize(arg, toMeaoiuString(arg)) : toMeaoiuString;
+export function createRuntimeIO({ onPrint, onPrompt, styleize = true }: IOConfig): MeaoiuRuntimeIO {
+	const styleizer: Styleizer | false = styleize === true ? colorize : styleize;
+	const argToString = styleizer ? (arg: unknown) => styleizer(arg, toMeaoiuString(arg)) : toMeaoiuString;
 	return { prompt: onPrompt, print: args => onPrint(args.map(argToString).join(' ')) };
 }

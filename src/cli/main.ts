@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 // src/cli/main.ts - Meaoiu CLI
+const version = '__MEAOIU_VERSION__';
 
 import { cac } from 'cac';
 import { readFile } from 'node:fs/promises';
-import { createBuiltInFunctions } from '../core/builtIns.js';
-import { MeaoiuError } from '../core/error.js';
-import { createRuntimeIO } from '../core/run/io.js';
-import { LogLevel, setLogLevel } from '../core/run/logger.js';
+import { MeaoiuError, type IOConfig } from '../index.js';
 import { complete } from './tools/completer.js';
 import { diagnose } from './tools/diagnoser.js';
 import { format } from './tools/formatter.js';
@@ -24,8 +22,7 @@ const enum Option {
 	DEBUG = 'debug',
 }
 
-const cli = cac('meaoiu').version('0.0.29');
-
+const cli = cac('meaoiu').version(version);
 cli.help(sections => {
 	sections.splice(1, 0, {
 		title: 'Description',
@@ -55,8 +52,9 @@ cli.help(sections => {
 				[Option.REFERENCES]: pos => references(sourceCode, file, pos),
 				[Option.HOVER]: pos => hover(sourceCode, pos),
 				[Option.COMPLETE]: pos => complete(sourceCode, pos),
-				[Option.DEBUG]: () => (setLogLevel(LogLevel.DEBUG), /* 是否继续执行 */ true),
+				[Option.DEBUG]: () => (debug = true) /* true 则继续执行 */,
 			};
+			let debug = false;
 
 			// 找出第一个被设置的选项（优先级顺序按 keys 顺序）
 			for (const [key, action] of Object.entries(lspActions)) {
@@ -65,13 +63,12 @@ cli.help(sections => {
 			}
 
 			// 默认行为：运行脚本（交互 I/O）
-			const cliIO = createRuntimeIO({
-				onPrint: (formattedString: string) => console.log(formattedString),
+			const ioConfig: IOConfig = {
+				onPrint: console.log,
 				onPrompt: prompt,
-				useColor: true,
-			});
-			const builtIns = createBuiltInFunctions(cliIO);
-			await run(sourceCode, builtIns, file);
+				styleize: true,
+			};
+			await run(sourceCode, ioConfig, file, debug);
 		} catch (err) {
 			if (err instanceof MeaoiuError) console.error(err.message);
 			else if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
