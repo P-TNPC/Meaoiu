@@ -1,6 +1,6 @@
 // src/core/ast.ts
 
-import type { Token } from './tokenizer.js';
+import type { ArithmeticTokenKind, ComparisonTokenKind, EqualityTokenKind, Token, TokenKind } from './lexer/tokenizer.js';
 
 export const enum NodeKind {
 	// 特例
@@ -25,13 +25,13 @@ export const enum NodeKind {
 	BlockExpression,
 	IfExpression,
 	LoopExpression,
-	ArithmeticExpression,
 	CallExpression,
-	SequenceExpression,
-	LogicalExpression,
-	ComparisonExpression,
 	MemberAccessExpression,
 	UnaryExpression,
+	ArithmeticExpression,
+	ComparisonExpression,
+	SequenceExpression,
+	LogicalExpression,
 }
 
 export type Node = Statement | Expression | Program | ErrorNode;
@@ -85,19 +85,13 @@ export type Expression =
 	| LogicalExpression
 	| ErrorNode;
 
-export const enum AssignmentOperator {
-	REFERENCE,
-	COPY,
-	MOVE,
-}
-export type UnaryOperator = AssignmentOperator.COPY | AssignmentOperator.MOVE;
-
-export const enum LogicalOperator {
-	AND,
-	OR,
-	NAND,
-	NOR,
-}
+type UnaryOperator = TokenKind.ASSIGNMENT_LIKE | TokenKind.ASSIGNMENT_ONLY;
+type AssignmentOperator = TokenKind.ASSIGNMENT_IS | UnaryOperator;
+type LogicalOperator =
+	| TokenKind.LOGIC_CLOSE_AND
+	| TokenKind.LOGIC_CLOSE_OR
+	| TokenKind.LOGIC_CLOSE_NAND
+	| TokenKind.LOGIC_CLOSE_NOR;
 
 export interface VariableDeclaration extends AstNode<NodeKind.VariableDeclaration> {
 	identifier: Identifier;
@@ -185,17 +179,17 @@ export interface UnaryExpression extends AstNode<NodeKind.UnaryExpression> {
 export interface ArithmeticExpression extends AstNode<NodeKind.ArithmeticExpression> {
 	left: Expression;
 	right: Expression;
-	operator: string;
+	operator: Token<ArithmeticTokenKind>;
 }
 
 export interface ComparisonExpression extends AstNode<NodeKind.ComparisonExpression> {
 	expressions: Expression[];
-	operators: Token[];
+	operators: Token<ComparisonTokenKind>[];
 }
 
 export interface SequenceExpression extends AstNode<NodeKind.SequenceExpression> {
 	sections: Expression[];
-	operators: Token[];
+	operators: Token<ArithmeticTokenKind | EqualityTokenKind>[];
 }
 
 export interface LogicalExpression extends AstNode<NodeKind.LogicalExpression> {

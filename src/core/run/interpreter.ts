@@ -1,10 +1,10 @@
 // src/core/run/interpreter.ts
 
 import type * as AST from '../ast.js';
-import { AssignmentOperator, LogicalOperator, NodeKind } from '../ast.js';
+import { NodeKind } from '../ast.js';
 import { checkArgsForBuiltIn, isBuiltInFunctionName, type MeaoiuBuiltIns } from '../builtIns.js';
 import { errorFrom, MeaoiuError, Phase } from '../error.js';
-import type { Token } from '../tokenizer.js';
+import { type Token, TokenKind } from '../lexer/tokenizer.js';
 import {
 	checkArithmeticOperation,
 	checkComparisonOperation,
@@ -84,17 +84,19 @@ export async function evaluate(
 					let autoIndexCounter = 0; // 自动索引计数器
 					for (const stmt of body) {
 						// 声明语句
-						if (stmt.kind === NodeKind.VariableDeclaration) await evaluate(stmt, blockEnv, builtIns, boundaryEnv);
-						// 调用辅助函数处理纯表达式
-						else if (stmt.kind === NodeKind.ExpressionStatement) {
-							autoIndexCounter = await _evaluateCollectionElement(
-								stmt,
-								blockEnv,
-								builtIns,
-								boundaryEnv,
-								autoIndexCounter,
-							);
+						if (stmt.kind === NodeKind.VariableDeclaration) {
+							await evaluate(stmt, blockEnv, builtIns, boundaryEnv);
+							continue;
 						}
+						if (stmt.kind !== NodeKind.ExpressionStatement) continue;
+						// 调用辅助函数处理纯表达式
+						autoIndexCounter = await _evaluateCollectionElement(
+							stmt,
+							blockEnv,
+							builtIns,
+							boundaryEnv,
+							autoIndexCounter,
+						);
 					}
 					return blockEnv; // 返回纸箱的环境
 				}
@@ -135,15 +137,14 @@ export async function evaluate(
 				let accVal: any = resolveValue(await evaluate(sections[0]!, env, builtIns, boundaryEnv));
 
 				for (let i = 0; i < operators.length; i++) {
-					const opToken = operators[i]!,
-						op = opToken.value;
+					const op = operators[i]!;
 					const nextVal: any = resolveValue(await evaluate(sections[i + 1]!, env, builtIns, boundaryEnv));
 
-					switch (op) {
-						case '==':
+					switch (op.kind) {
+						case TokenKind.COMPARISON_EQUAL:
 							accVal = accVal === nextVal;
 							continue; // 计算完毕，继续下一次循环
-						case '!=':
+						case TokenKind.COMPARISON_NOT_EQUAL:
 							accVal = accVal !== nextVal;
 							continue; // 计算完毕，继续下一次循环
 					}
@@ -152,24 +153,25 @@ export async function evaluate(
 					const nextType = getMeaoiuType(nextVal);
 
 					const error = checkArithmeticOperation(op, accType, nextType);
-					if (error) throw runtimeErrorFrom(opToken, `${error}`);
+					if (error) throw runtimeErrorFrom(op, `${error}`);
 
-					switch (op) {
-						case '+':
+					switch (op.kind) {
+						case TokenKind.ARITHMETIC_PLUS:
 							if (accType === MeaoiuType.COLLECTION) accVal = accVal.createMergedView(nextVal);
 							else accVal += nextVal;
 							break;
-						case '-':
+						case TokenKind.ARITHMETIC_MINUS:
 							accVal -= nextVal;
 							break;
-						case '*':
+						case TokenKind.ARITHMETIC_MULTIPLY:
 							accVal *= nextVal;
 							break;
-						case '/':
+						case TokenKind.ARITHMETIC_DIVIDE:
 							accVal /= nextVal;
 							break;
 						default:
-							throw runtimeErrorFrom(opToken, `这个「${op}」这是什么节喵？`);
+							const _o: never = op;
+							throw runtimeErrorFrom(_o, `这个「${_o}」这是什么节喵？`);
 					}
 				}
 				return accVal;
@@ -186,17 +188,19 @@ export async function evaluate(
 				const error = checkArithmeticOperation(op, leftType, rightType);
 				if (error) throw runtimeErrorFrom(node, `${error}`);
 
-				switch (op) {
-					case '+':
+				switch (op.kind) {
+					case TokenKind.ARITHMETIC_PLUS:
 						return leftType === MeaoiuType.COLLECTION ? leftVal.createMergedView(rightVal) : leftVal + rightVal;
-					case '-':
+					case TokenKind.ARITHMETIC_MINUS:
 						return leftVal - rightVal;
-					case '*':
+					case TokenKind.ARITHMETIC_MULTIPLY:
 						return leftVal * rightVal;
-					case '/':
+					case TokenKind.ARITHMETIC_DIVIDE:
 						return leftVal / rightVal;
+					default:
+						const _o: never = op;
+						throw runtimeErrorFrom(_o, `「${_o}」是两块钱的运算符喵?`);
 				}
-				throw runtimeErrorFrom(node, `「${op}」是两块钱的运算符喵?`);
 			}
 			case NodeKind.ComparisonExpression: {
 				const { expressions, operators } = node;
@@ -205,39 +209,39 @@ export async function evaluate(
 					currentLeftVal: any = resolveValue(await evaluate(expressions[0]!, env, builtIns, boundaryEnv));
 
 				for (let i = 0; i < operators.length; i++) {
-					const opToken = operators[i]!,
-						op = opToken.value;
+					const op = operators[i]!;
 					const currentRightVal: any = resolveValue(await evaluate(expressions[i + 1]!, env, builtIns, boundaryEnv));
 
 					const leftType = getMeaoiuType(currentLeftVal);
 					const rightType = getMeaoiuType(currentRightVal);
 
 					const error = checkComparisonOperation(op, leftType, rightType);
-					if (error) throw runtimeErrorFrom(opToken, `${error}`);
+					if (error) throw runtimeErrorFrom(op, `${error}`);
 
 					// --- 执行单个比较 ---
 					let currentResult = false;
-					switch (op) {
-						case '==':
+					switch (op.kind) {
+						case TokenKind.COMPARISON_EQUAL:
 							currentResult = currentLeftVal === currentRightVal;
 							break;
-						case '!=':
+						case TokenKind.COMPARISON_NOT_EQUAL:
 							currentResult = currentLeftVal !== currentRightVal;
 							break;
-						case '>':
+						case TokenKind.COMPARISON_GREATER:
 							currentResult = currentLeftVal > currentRightVal;
 							break;
-						case '<':
+						case TokenKind.COMPARISON_LESS:
 							currentResult = currentLeftVal < currentRightVal;
 							break;
-						case '>=':
+						case TokenKind.COMPARISON_GREATER_EQUAL:
 							currentResult = currentLeftVal >= currentRightVal;
 							break;
-						case '<=':
+						case TokenKind.COMPARISON_LESS_EQUAL:
 							currentResult = currentLeftVal <= currentRightVal;
 							break;
 						default:
-							throw runtimeErrorFrom(opToken, `不会用「${op}」比喵~`);
+							const _o: never = op;
+							throw runtimeErrorFrom(_o, `不会用「${_o}」比喵~`);
 					}
 
 					if (!currentResult) {
@@ -254,13 +258,13 @@ export async function evaluate(
 				const { operator: op, left, right } = node;
 				const leftVal = resolveValue(await evaluate(left, env, builtIns, boundaryEnv));
 				switch (op) {
-					case LogicalOperator.AND:
+					case TokenKind.LOGIC_CLOSE_AND:
 						return !!(leftVal && resolveValue(await evaluate(right, env, builtIns, boundaryEnv)));
-					case LogicalOperator.OR:
+					case TokenKind.LOGIC_CLOSE_OR:
 						return !!(leftVal || resolveValue(await evaluate(right, env, builtIns, boundaryEnv)));
-					case LogicalOperator.NOR:
+					case TokenKind.LOGIC_CLOSE_NOR:
 						return !(leftVal || resolveValue(await evaluate(right, env, builtIns, boundaryEnv)));
-					case LogicalOperator.NAND:
+					case TokenKind.LOGIC_CLOSE_NAND:
 						return !(leftVal && resolveValue(await evaluate(right, env, builtIns, boundaryEnv)));
 					default: // 理论不可达
 						const _o: never = op;
@@ -409,9 +413,9 @@ export async function evaluate(
 				const argumentValue = resolveValue(argumentRef);
 
 				switch (op) {
-					case AssignmentOperator.COPY: // 高仿
+					case TokenKind.ASSIGNMENT_LIKE: // 高仿
 						return argumentValue instanceof Environment ? argumentValue.createShallowCopy() : argumentValue;
-					case AssignmentOperator.MOVE: // 抢走
+					case TokenKind.ASSIGNMENT_ONLY: // 抢走
 						if (!isReferenceLink(argumentRef)) throw runtimeErrorFrom(argument, `只能抢走碗里的东西喵！`);
 						Environment.markReferenceMoved(argumentRef); // 标记源头为已移动
 						return argumentValue;
@@ -448,12 +452,12 @@ async function _evaluateCollectionElement(
 	const expr = stmt.expression;
 
 	let name: string | undefined,
-		operator: AssignmentOperator = AssignmentOperator.COPY;
+		operator: AST.AssignmentStatement['operator'] = TokenKind.ASSIGNMENT_LIKE;
 
 	if (expr.kind === NodeKind.Identifier) {
 		// 元素是 `a` -> 声明为 `a`，并创建引用
 		name = expr.symbol;
-		operator = AssignmentOperator.REFERENCE;
+		operator = TokenKind.ASSIGNMENT_IS;
 	} else if (expr.kind === NodeKind.UnaryExpression && expr.argument.kind === NodeKind.Identifier) {
 		// 元素是 `高仿 a` 或 `抢走 a`
 		name = expr.argument.symbol;

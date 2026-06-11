@@ -6,7 +6,7 @@ import { Environment } from '../core/run/environment.js';
 import { evaluate } from '../core/run/interpreter.js';
 import { createRuntimeIO, type IOConfig } from '../core/run/io.js';
 import { LogLevel, setLogLevel } from '../core/run/logger.js';
-import { tokenize } from '../core/tokenizer.js';
+import { tokenize } from '../core/lexer/tokenizer.js';
 
 type RunOptions = {
 	useOnebased?: boolean;
@@ -24,4 +24,4 @@ async function execute(
 	await evaluate(ast, globalEnv, builtIns, {});
 }
 
-export { execute, IOConfig, LogLevel, RunOptions };
+export { execute, LogLevel, type IOConfig, type RunOptions };

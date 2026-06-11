@@ -1,7 +1,7 @@
 // src/core/error.ts
 
 import type * as AST from './ast.js';
-import type { Token } from './tokenizer.js';
+import type { Token } from './lexer/tokenizer.js';
 
 export const enum Phase {
 	UNKNOWN = 0,

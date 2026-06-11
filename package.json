@@ -1,6 +1,6 @@
 {
 	"name": "meaoiu",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "盒中有识算之聪慧喵，告世人云：喵谕者，古今地外皆曰好喵，乃奇民要术喵~",
 	"keywords": [
 		"meaoiu",
@@ -49,7 +49,7 @@
 		"prepublishOnly": "npm run build"
 	},
 	"devDependencies": {
-		"@types/node": "^25.9.1",
+		"@types/node": "^25.9.3",
 		"rimraf": "^6.1.3",
 		"typescript": "^6.0.3"
 	},

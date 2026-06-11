@@ -20,7 +20,7 @@ export function diagnose(sourceCode: string, filePath: string): void {
 			return acc;
 		}, []);
 
-		noErrorTypes.length && console.log(`[诊断器] ✅ 未发现任何${noErrorTypes.join('或')}错误。`);
+		if (noErrorTypes.length) console.log(`[诊断器] ✅ 未发现任何${noErrorTypes.join('或')}错误。`);
 	} catch (err) {
 		console.error('\n-----------------------------');
 		console.error(formatError(err, sourceCode, filePath));

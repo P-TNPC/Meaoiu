@@ -2,7 +2,7 @@
 
 import { MeaoiuBuiltInNames } from '../core/builtIns.js';
 import { ParseMode, Parser, type ParseResult } from '../core/parser.js';
-import { tokenize } from '../core/tokenizer.js';
+import { tokenize } from '../core/lexer/tokenizer.js';
 import { analyzeSymbols, type AnalyzeResult } from './utils/symbolAnalyzer.js';
 
 type DocState = { version: number; getText: () => string }; // 适配 VsCode 格式

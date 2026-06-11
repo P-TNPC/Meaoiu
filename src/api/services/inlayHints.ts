@@ -16,13 +16,13 @@ const enum InlayHintKind {
 /**
  * 内联提示信息结构
  */
-export interface InlayHint {
+export type InlayHint = {
 	position: Position;
 	label: string;
 	kind: InlayHintKind;
 	paddingLeft?: boolean;
 	paddingRight?: boolean;
-}
+};
 
 /**
  * 辅助函数：追踪引用链找到最终的符号

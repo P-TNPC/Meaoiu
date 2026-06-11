@@ -1,4 +1,4 @@
-// src/core/preprocessor.ts
+// src/core/lexer/preprocessor.ts
 
 const fullWidthMap: Record<string, string> = {
 	// 数字

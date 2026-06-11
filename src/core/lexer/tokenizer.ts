@@ -1,16 +1,16 @@
-// src/core/tokenizer.ts
+// src/core/lexer/tokenizer.ts
 
 import { preprocess } from './preprocessor.js';
-import { MeaoiuBuiltInNames } from './builtIns.js';
+import { MeaoiuBuiltInNames } from '../builtIns.js';
 
 export const enum TokenKind {
 	ERROR, //不认识的字符喵
 
 	// 关键字
 	KEYWORD_USE,
-	KEYWORD_IS,
-	KEYWORD_LIKE,
-	KEYWORD_ONLY,
+	ASSIGNMENT_IS,
+	ASSIGNMENT_LIKE,
+	ASSIGNMENT_ONLY,
 	KEYWORD_CLONE,
 	KEYWORD_MOVE,
 	KEYWORD_CONFIRM,
@@ -38,7 +38,17 @@ export const enum TokenKind {
 	BLOCK_END, // #]
 	TERMINATOR, // ~
 	ACCESSOR, // @
-	OPERATOR, // +, -, *, /, ==, !=, >, <, >=, <=
+	// 操作符 +, -, *, /, ==, !=, >, <, >=, <=
+	ARITHMETIC_PLUS, // +
+	ARITHMETIC_MINUS, // -
+	ARITHMETIC_MULTIPLY, // *
+	ARITHMETIC_DIVIDE, // /
+	COMPARISON_EQUAL, // ==
+	COMPARISON_NOT_EQUAL, // !=
+	COMPARISON_GREATER, // >
+	COMPARISON_LESS, // <
+	COMPARISON_GREATER_EQUAL, // >=
+	COMPARISON_LESS_EQUAL, // <=
 	COMMA, // ,
 
 	// 逻辑
@@ -54,12 +64,47 @@ export const enum TokenKind {
 	EOF,
 }
 
-export const KEYWORDS = {
+export type AdditiveTokenKind = TokenKind.ARITHMETIC_PLUS | TokenKind.ARITHMETIC_MINUS;
+export type MultiplicativeTokenKind = TokenKind.ARITHMETIC_MULTIPLY | TokenKind.ARITHMETIC_DIVIDE;
+export type ArithmeticTokenKind = AdditiveTokenKind | MultiplicativeTokenKind;
+export type EqualityTokenKind = TokenKind.COMPARISON_EQUAL | TokenKind.COMPARISON_NOT_EQUAL;
+type OrderingTokenKind =
+	| TokenKind.COMPARISON_GREATER
+	| TokenKind.COMPARISON_LESS
+	| TokenKind.COMPARISON_GREATER_EQUAL
+	| TokenKind.COMPARISON_LESS_EQUAL;
+export type ComparisonTokenKind = EqualityTokenKind | OrderingTokenKind;
+// type OperatorTokenKind = ArithmeticTokenKind | ComparisonTokenKind;
+
+type TokenValueMap = {
+	[TokenKind.ARITHMETIC_PLUS]: '+';
+	[TokenKind.ARITHMETIC_MINUS]: '-';
+	[TokenKind.ARITHMETIC_MULTIPLY]: '*';
+	[TokenKind.ARITHMETIC_DIVIDE]: '/';
+	[TokenKind.COMPARISON_EQUAL]: '==';
+	[TokenKind.COMPARISON_NOT_EQUAL]: '!=';
+	[TokenKind.COMPARISON_GREATER]: '>';
+	[TokenKind.COMPARISON_LESS]: '<';
+	[TokenKind.COMPARISON_GREATER_EQUAL]: '>=';
+	[TokenKind.COMPARISON_LESS_EQUAL]: '<=';
+};
+
+type TokenUnion = {
+	[K in TokenKind]: {
+		kind: K;
+		value: K extends keyof TokenValueMap ? TokenValueMap[K] : string;
+		line: number;
+		col: number;
+	};
+}[TokenKind];
+export type Token<K extends TokenKind = TokenKind> = Extract<TokenUnion, { kind: K }>;
+
+const KEYWORDS = {
 	蹭: TokenKind.KEYWORD_USE,
-	就是: TokenKind.KEYWORD_IS,
-	就像: TokenKind.KEYWORD_LIKE,
+	就是: TokenKind.ASSIGNMENT_IS,
+	就像: TokenKind.ASSIGNMENT_LIKE,
 	高仿: TokenKind.KEYWORD_CLONE,
-	才是: TokenKind.KEYWORD_ONLY,
+	才是: TokenKind.ASSIGNMENT_ONLY,
 	抢走: TokenKind.KEYWORD_MOVE,
 	'好不好?': TokenKind.KEYWORD_CONFIRM,
 	不然: TokenKind.KEYWORD_ELSE,
@@ -80,36 +125,23 @@ export const KEYWORDS = {
 	不好: TokenKind.LOGIC_CLOSE_NAND,
 } as const satisfies Record<string, TokenKind>;
 export type Keyword = keyof typeof KEYWORDS;
-export function isKeyword(symbol: string): symbol is Keyword {
-	return symbol in KEYWORDS;
-}
-
+export const isKeyword = (symbol: string): symbol is Keyword => symbol in KEYWORDS;
 export const sortedKeywords = Object.keys(KEYWORDS).sort((a, b) => b.length - a.length) as Keyword[];
 
-export const OP_ARITH = new Set(['+', '-', '*', '/']);
-export const OP_COMP = new Set(['==', '!=', '>', '<', '>=', '<=']);
-export const OP_COMP_E = new Set(['==', '!=']);
 const ID_START_REGEX = /[\p{ID_Start}_]/v;
 const ID_CONTINUE_REGEX = /[\p{ID_Continue}]/v;
 const isNumChar = (char: string) => char >= '0' && char <= '9';
 
-export type Token = {
-	kind: TokenKind;
-	value: string;
-	line: number;
-	col: number;
-};
-
 export type TokenizerOptions = {
 	ignoreComments?: boolean;
-	convertFullWidth?: boolean;
+	convertNonAscii?: boolean;
 	useOnebased?: boolean;
 };
 
 export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[] {
-	const { ignoreComments = true, convertFullWidth = true, useOnebased = true } = options ?? {};
+	const { ignoreComments = true, convertNonAscii = true, useOnebased = true } = options ?? {};
 	const OriginBase = +useOnebased;
-	if (convertFullWidth) sourceCode = preprocess(sourceCode);
+	if (convertNonAscii) sourceCode = preprocess(sourceCode);
 	const sourceCodeLen = sourceCode.length;
 
 	// 小本本：记函数
@@ -172,22 +204,28 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 		}
 		if (matchedKeyword) {
 			const tokenKind = KEYWORDS[matchedKeyword];
-			tokens.push({ kind: tokenKind, value: matchedKeyword, line: startLine, col: startCol });
+			tokens.push({ kind: tokenKind, value: matchedKeyword, line: startLine, col: startCol } as Token<typeof tokenKind>);
 			advance(matchedKeyword.length);
 
 			if (tokenKind === TokenKind.KEYWORD_DEF) expectingFuncNameAfterParamEnd = true; // '想要'
 			continue;
 		}
-		// 二字操作符
-		if (charLen === 1 && cursor + 1 < sourceCodeLen) {
+		// 二字原子
+		doubleCharAtomic: if (cursor + 1 < sourceCodeLen) {
 			const twoCharSymbol = char + sourceCode[cursor + 1];
 			let kind: TokenKind = TokenKind.ERROR; // 默认无效值
 			switch (twoCharSymbol) {
 				case '==':
+					kind = TokenKind.COMPARISON_EQUAL;
+					break;
 				case '!=':
+					kind = TokenKind.COMPARISON_NOT_EQUAL;
+					break;
 				case '>=':
+					kind = TokenKind.COMPARISON_GREATER_EQUAL;
+					break;
 				case '<=':
-					kind = TokenKind.OPERATOR;
+					kind = TokenKind.COMPARISON_LESS_EQUAL;
 					break;
 				case '[=':
 					kind = TokenKind.COLLECTION_START;
@@ -201,21 +239,49 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 				case '#]':
 					kind = TokenKind.BLOCK_END;
 					break;
+				default:
+					break doubleCharAtomic;
 			}
-			if (kind !== TokenKind.ERROR) {
-				tokens.push({ kind, value: twoCharSymbol, line: startLine, col: startCol });
-				advance(2);
-				if (kind !== TokenKind.COLLECTION_END) expectingFuncNameAfterParamEnd = false;
-				continue;
-			}
+			tokens.push({ kind, value: twoCharSymbol, line: startLine, col: startCol } as Token<typeof kind>);
+			advance(2);
+			if (kind !== TokenKind.COLLECTION_END) expectingFuncNameAfterParamEnd = false;
+			continue;
 		}
-		// 单字操作符
-		if ('+-*/><@~,'.includes(char)) {
-			let kind: TokenKind = TokenKind.OPERATOR;
-			if (char === ',') kind = TokenKind.COMMA;
-			else if (char === '@') kind = TokenKind.ACCESSOR;
-			else if (char === '~') kind = TokenKind.TERMINATOR;
-			tokens.push({ kind, value: char, line: startLine, col: startCol });
+		// 单字原子
+		singleCharAtomic: {
+			let kind: TokenKind = TokenKind.ERROR;
+			switch (char) {
+				case '+':
+					kind = TokenKind.ARITHMETIC_PLUS;
+					break;
+				case '-':
+					kind = TokenKind.ARITHMETIC_MINUS;
+					break;
+				case '*':
+					kind = TokenKind.ARITHMETIC_MULTIPLY;
+					break;
+				case '/':
+					kind = TokenKind.ARITHMETIC_DIVIDE;
+					break;
+				case '>':
+					kind = TokenKind.COMPARISON_GREATER;
+					break;
+				case '<':
+					kind = TokenKind.COMPARISON_LESS;
+					break;
+				case ',':
+					kind = TokenKind.COMMA;
+					break;
+				case '@':
+					kind = TokenKind.ACCESSOR;
+					break;
+				case '~':
+					kind = TokenKind.TERMINATOR;
+					break;
+				default:
+					break singleCharAtomic;
+			}
+			tokens.push({ kind, value: char, line: startLine, col: startCol } as Token<typeof kind>);
 			advance(charLen);
 			continue;
 		}

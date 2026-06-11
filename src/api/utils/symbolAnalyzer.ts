@@ -1,11 +1,11 @@
 // src/api/utils/symbolAnalyzer.ts
 
 import type * as AST from '../../core/ast.js';
-import { AssignmentOperator, NodeKind } from '../../core/ast.js';
+import { NodeKind } from '../../core/ast.js';
 import type { MeaoiuBuiltInNames } from '../../core/builtIns.js';
 import { errorFrom, Phase, type MeaoiuError } from '../../core/error.js';
-import type { Token } from '../../core/tokenizer.js';
-import { MeaoiuType, checkArithmeticOperation, checkComparisonOperation } from '../../core/typedef.js';
+import { TokenKind, type Token } from '../../core/lexer/tokenizer.js';
+import { checkArithmeticOperation, checkComparisonOperation, MeaoiuType } from '../../core/typedef.js';
 import { SymbolKind, SymbolTag, type Scope, type SymbolInfo } from './symbolTable.js';
 
 const semanticErrorFrom = (ele: AST.Node | Token, message: string) => errorFrom(ele, message, Phase.SEMANTIC);
@@ -37,8 +37,8 @@ class SymbolAnalyzer {
 			case NodeKind.BlockExpression:
 				return node.isCollection ? MeaoiuType.COLLECTION : MeaoiuType.UNKNOWN;
 			case NodeKind.ArithmeticExpression: {
-				const op = node.operator;
-				if (op !== '+') return MeaoiuType.NUMBER;
+				const opKind = node.operator.kind;
+				if (opKind !== TokenKind.ARITHMETIC_PLUS) return MeaoiuType.NUMBER;
 
 				let knownType = this.inferExpressionType(node.left);
 				if (knownType === MeaoiuType.UNKNOWN) knownType = this.inferExpressionType(node.right);
@@ -54,12 +54,12 @@ class SymbolAnalyzer {
 
 				scan: for (let i = 0; i < operators.length; i++) {
 					if (accType !== MeaoiuType.UNKNOWN) continue;
-					const op = operators[i]!.value;
-					switch (op) {
-						case '+':
+					const opKind = operators[i]!.kind;
+					switch (opKind) {
+						case TokenKind.ARITHMETIC_PLUS:
 							break;
-						case '==':
-						case '!=':
+						case TokenKind.COMPARISON_EQUAL:
+						case TokenKind.COMPARISON_NOT_EQUAL:
 							accType = MeaoiuType.BOOLEAN;
 							break scan;
 						default:
@@ -213,8 +213,8 @@ class SymbolAnalyzer {
 			if (valueSymbol?.tag === SymbolTag.DECAYED) tag = valueSymbol.tag; // 衰变传染
 
 			// 「就是」创建静态引用或「才是」标记为已移动
-			if (init.operator === AssignmentOperator.REFERENCE) valueRef = valueSymbol;
-			else if (init.operator === AssignmentOperator.MOVE) this.markAsMoved(init.value.symbol);
+			if (init.operator === TokenKind.ASSIGNMENT_IS) valueRef = valueSymbol;
+			else if (init.operator === TokenKind.ASSIGNMENT_ONLY) this.markAsMoved(init.value.symbol);
 
 			if (tag !== SymbolTag.NORMAL) {
 				this.errors.push(semanticErrorFrom(identifier, `这个 '${identifier.symbol}' 没有灵魂喵！`));
@@ -240,11 +240,9 @@ class SymbolAnalyzer {
 			if (valueSymbol?.tag === SymbolTag.DECAYED) symbol.tag = valueSymbol.tag; // 衰变传染
 
 			symbol.valueRef =
-				operator === AssignmentOperator.REFERENCE &&
-				value.kind === NodeKind.Identifier &&
-				symbol.tag !== SymbolTag.DECAYED
-					? valueSymbol // '就是' (Reference) 为未衰变符号更新静态引用链
-					: undefined; // '才是' (Move) 和 '就像' (Copy) 会打断旧的引用链，符号衰变也会使引用失效
+				operator === TokenKind.ASSIGNMENT_IS && value.kind === NodeKind.Identifier && symbol.tag !== SymbolTag.DECAYED
+					? valueSymbol // '就是' (IS) 为未衰变符号更新静态引用链
+					: undefined; // '才是' (ONLY) 和 '就像' (LIKE) 会打断旧的引用链，符号衰变也会使引用失效
 
 			// 更新符号表
 			this.findSymbolScope(assignee.symbol)!.symbols.set(assignee.symbol, symbol);
@@ -255,7 +253,7 @@ class SymbolAnalyzer {
 			}
 		}
 
-		if (operator === AssignmentOperator.MOVE && value.kind === NodeKind.Identifier) this.markAsMoved(value.symbol);
+		if (operator === TokenKind.ASSIGNMENT_ONLY && value.kind === NodeKind.Identifier) this.markAsMoved(value.symbol);
 	}
 
 	private visitArithmeticExpression(node: AST.ArithmeticExpression): void {
@@ -290,7 +288,7 @@ class SymbolAnalyzer {
 
 		for (let i = 0; i < operators.length; i++) {
 			const currentRightExpr = expressions[i + 1]!;
-			let currentRightType = this.inferExpressionType(currentRightExpr); // 必须是 let
+			let currentRightType = this.inferExpressionType(currentRightExpr);
 			this.visit(currentRightExpr); // 访问右边
 
 			switch ((+(currentLeftType === MeaoiuType.UNKNOWN) << 1) | +(currentRightType === MeaoiuType.UNKNOWN)) {
@@ -306,9 +304,9 @@ class SymbolAnalyzer {
 					break;
 			}
 
-			const opToken = operators[i]!;
-			const error = checkComparisonOperation(opToken.value, currentLeftType, currentRightType);
-			if (error) this.errors.push(semanticErrorFrom(opToken, error));
+			const op = operators[i]!;
+			const error = checkComparisonOperation(op, currentLeftType, currentRightType);
+			if (error) this.errors.push(semanticErrorFrom(op, error));
 
 			currentLeftType = currentRightType;
 		}
@@ -320,9 +318,11 @@ class SymbolAnalyzer {
 		this.visit(sections[0]); // 访问第一节
 
 		for (let i = 0; i < operators.length; i++) {
-			const opToken = operators[i]!,
-				op = opToken.value;
-			if (op === '==' || op === '!=') return this.visitComparisonSequence(node, i + 1); // 让专用检查函数接力，本函数已结束使命
+			const op = operators[i]!,
+				opKind = op.kind;
+			if (opKind === TokenKind.COMPARISON_EQUAL || opKind === TokenKind.COMPARISON_NOT_EQUAL) {
+				return this.visitComparisonSequence(node, i + 1); // 让专用检查函数接力，本函数已结束使命
+			}
 
 			const nextExpr = sections[i + 1]!;
 			let nextType = this.inferExpressionType(nextExpr);
@@ -330,7 +330,7 @@ class SymbolAnalyzer {
 
 			switch ((+(accType === MeaoiuType.UNKNOWN) << 1) | +(nextType === MeaoiuType.UNKNOWN)) {
 				case 0b11: // 都不懂
-					if (op !== '+') accType = MeaoiuType.NUMBER; // 非加号，锁定类型
+					if (opKind !== TokenKind.ARITHMETIC_PLUS) accType = MeaoiuType.NUMBER; // 非加号，锁定类型
 					continue; // 跳过检查
 				case 0b10: // 前不懂
 					accType = nextType;
@@ -344,7 +344,7 @@ class SymbolAnalyzer {
 
 			const error = checkArithmeticOperation(op, accType, nextType);
 			if (error) {
-				this.errors.push(semanticErrorFrom(opToken, error));
+				this.errors.push(semanticErrorFrom(op, error));
 				break; // 跳出坏链
 			}
 
@@ -358,12 +358,12 @@ class SymbolAnalyzer {
 
 		// 遍历链上剩下的所有操作符
 		for (let i = startIndex; i < operators.length; i++) {
-			const opToken = operators[i]!,
-				op = opToken.value;
+			const op = operators[i]!,
+				opKind = op.kind;
 
 			// 检查是否混入了非比较运算符
-			if (op !== '==' && op !== '!=') {
-				this.errors.push(semanticErrorFrom(opToken, `比较节不能混入 '${op}' 算术符喵!`));
+			if (opKind !== TokenKind.COMPARISON_EQUAL && opKind !== TokenKind.COMPARISON_NOT_EQUAL) {
+				this.errors.push(semanticErrorFrom(op, `比较节不能混入 '${op.value}' 算术符喵!`));
 				break; // 发现错误，中止检查
 			}
 

@@ -1,15 +1,15 @@
 // src/core/run/environment.ts
 
 import type * as AST from '../ast.js';
-import { AssignmentOperator } from '../ast.js';
+import { TokenKind } from '../lexer/tokenizer.js';
 import logger from '../run/logger.js';
 import { MeaoiuType, typeNames, type MeaoiuValue } from '../typedef.js';
 import {
 	isReferenceLink,
 	isSignal,
+	type EnvVariable,
 	type Evaluated,
 	type ReferenceLink,
-	type EnvVariable,
 	type VariableValue,
 } from './value.js';
 
@@ -17,9 +17,9 @@ import {
 export const autoKey = (index: number) => `}${index}{`; // 使用不合语法的反花括号
 const isAutoKey = (key: string) => key[0] === '}' && key[key.length - 1] === '{';
 
-let envCounter = 0;
 export class Environment {
 	public readonly id: number;
+	private static idCounter = 0;
 	private readonly parent: Environment | undefined;
 	private readonly variables: Map<string, EnvVariable> = new Map();
 	private readonly functions: Map<string, AST.FunctionDeclaration> = new Map();
@@ -27,7 +27,7 @@ export class Environment {
 
 	constructor(parent?: Environment) {
 		this.parent = parent;
-		this.id = envCounter++;
+		this.id = Environment.idCounter++;
 		logger.debug(`[ENV] 新建环境 #${this.id} (上级: ${this.parent?.id ?? '无'})`);
 	}
 
@@ -35,7 +35,7 @@ export class Environment {
 		ref.scope.variables.get(ref.name)!.moved = true;
 	}
 
-	public static resolveValue(value: Evaluated): MeaoiuValue {
+	public static resolveValue(this: void, value: Evaluated): MeaoiuValue {
 		if (isSignal(value)) throw new Error(`不能在这里发送神秘信号喵！`);
 		while (isReferenceLink(value)) value = value.scope.variables.get(value.name)!.value;
 		return value;
@@ -59,7 +59,7 @@ export class Environment {
 	/**
 	 * 为已存在的变量赋值。
 	 */
-	public assign(name: string, value: Evaluated, operator: AST.AssignmentOperator): ReferenceLink {
+	public assign(name: string, value: Evaluated, operator: AST.AssignmentStatement['operator']): ReferenceLink {
 		// 查找并追踪目标的最终存放位置
 		const initialTargetScope = this.findVariableScope(name);
 		if (!initialTargetScope) throw new Error(`还不认识「${name}」喵！要先“蹭”一下喵！`);
@@ -76,7 +76,7 @@ export class Environment {
 
 		// 在最终位置赋值
 		let finalValue: VariableValue;
-		if (operator === AssignmentOperator.REFERENCE) {
+		if (operator === TokenKind.ASSIGNMENT_IS) {
 			finalValue =
 				isReferenceLink(value) &&
 				(finalTargetScope !== value.scope || finalTargetName !== value.name) /* 防御循环引用 */
@@ -84,9 +84,9 @@ export class Environment {
 					: Environment.resolveValue(value);
 		} else {
 			finalValue = Environment.resolveValue(value);
-			if (operator === AssignmentOperator.MOVE) {
+			if (operator === TokenKind.ASSIGNMENT_ONLY) {
 				if (isReferenceLink(value)) Environment.markReferenceMoved(value); // 引用被移动，标记为「已移动」
-			} else if (operator === AssignmentOperator.COPY && finalValue instanceof Environment) {
+			} else if (operator === TokenKind.ASSIGNMENT_LIKE && finalValue instanceof Environment) {
 				finalValue = finalValue.createShallowCopy(); // 复制一个纸箱，实际上是创建一个「视图」
 			}
 		}

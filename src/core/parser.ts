@@ -1,9 +1,15 @@
 // src/core/parser.ts
 
 import type * as AST from './ast.js';
-import { AssignmentOperator, LogicalOperator, NodeKind } from './ast.js';
+import { NodeKind } from './ast.js';
 import { MeaoiuError, Phase, errorFrom } from './error.js';
-import { OP_ARITH, OP_COMP, OP_COMP_E, type Token, TokenKind } from './tokenizer.js';
+import {
+	TokenKind,
+	type AdditiveTokenKind,
+	type ComparisonTokenKind,
+	type MultiplicativeTokenKind,
+	type Token,
+} from './lexer/tokenizer.js';
 
 export const enum ParseMode {
 	STRICT,
@@ -14,14 +20,6 @@ export type ParseResult = {
 	program: AST.Program;
 	errors: MeaoiuError[];
 };
-
-type AssignmentOperatorTokenKind = TokenKind.KEYWORD_IS | TokenKind.KEYWORD_LIKE | TokenKind.KEYWORD_ONLY;
-
-const assignMap = {
-	[TokenKind.KEYWORD_IS]: AssignmentOperator.REFERENCE,
-	[TokenKind.KEYWORD_LIKE]: AssignmentOperator.COPY,
-	[TokenKind.KEYWORD_ONLY]: AssignmentOperator.MOVE,
-} as const satisfies Record<AssignmentOperatorTokenKind, AssignmentOperator>;
 
 const blockKindInfo = [
 	{
@@ -52,13 +50,32 @@ const blockKindInfo = [
 const syntaxErrorFrom = (ele: Token, message: string) => errorFrom(ele, message, Phase.SYNTACTIC);
 
 function tokenTrailing({ line, col: prevCol, value: prevValue }: Token, kind: TokenKind, value = ''): Token {
-	return { kind, value, line, col: prevCol + prevValue.length };
+	return { kind, value, line, col: prevCol + prevValue.length } as Token<typeof kind>;
 }
 
 function errorNodeWith({ message, line, col, endLine, endCol }: MeaoiuError): AST.ErrorNode {
 	return { kind: NodeKind.ErrorNode, message, line, col, endLine, endCol };
 }
 
+function isAdditiveToken(token: Token): token is Token<AdditiveTokenKind> {
+	return token.kind === TokenKind.ARITHMETIC_PLUS || token.kind === TokenKind.ARITHMETIC_MINUS;
+}
+function isMultiplicativeToken(token: Token): token is Token<MultiplicativeTokenKind> {
+	return token.kind === TokenKind.ARITHMETIC_MULTIPLY || token.kind === TokenKind.ARITHMETIC_DIVIDE;
+}
+function isComparisonToken(token: Token): token is Token<ComparisonTokenKind> {
+	switch (token.kind) {
+		case TokenKind.COMPARISON_GREATER:
+		case TokenKind.COMPARISON_LESS:
+		case TokenKind.COMPARISON_GREATER_EQUAL:
+		case TokenKind.COMPARISON_LESS_EQUAL:
+		case TokenKind.COMPARISON_EQUAL:
+		case TokenKind.COMPARISON_NOT_EQUAL:
+			return true;
+		default:
+			return false;
+	}
+}
 function isStartToken(kind: TokenKind): boolean {
 	switch (kind) {
 		case TokenKind.KEYWORD_USE:
@@ -75,8 +92,8 @@ function isStartToken(kind: TokenKind): boolean {
 	}
 }
 
-function isAssignmentOperator(kind: TokenKind): kind is AssignmentOperatorTokenKind {
-	return kind === TokenKind.KEYWORD_IS || kind === TokenKind.KEYWORD_LIKE || kind === TokenKind.KEYWORD_ONLY;
+function isAssignmentOperator(kind: TokenKind): kind is AST.AssignmentStatement['operator'] {
+	return kind === TokenKind.ASSIGNMENT_IS || kind === TokenKind.ASSIGNMENT_LIKE || kind === TokenKind.ASSIGNMENT_ONLY;
 }
 
 export class Parser {
@@ -92,8 +109,8 @@ export class Parser {
 
 	constructor(tokens: Token[], mode: ParseMode = ParseMode.STRICT) {
 		// 确保有 EOF 哨兵，避免边界问题
-		if (!tokens.length || tokens[tokens.length - 1]?.kind !== TokenKind.EOF) {
-			tokens = tokens.concat([{ kind: TokenKind.EOF, value: 'EndOfFile', line: -1, col: -1 }]);
+		if (!tokens.length || tokens[tokens.length - 1]!.kind !== TokenKind.EOF) {
+			tokens.push({ kind: TokenKind.EOF, value: 'EndOfFile', line: -1, col: -1 });
 		}
 		this.tokens = tokens;
 		this.MAX_POS = tokens.length - 1;
@@ -107,7 +124,7 @@ export class Parser {
 
 	// 安全前视 n 个 token
 	private peek(n = 1): Token {
-		return this.tokens[this.position + n] ?? this.tokens[this.MAX_POS]!;
+		return this.tokens[Math.min(this.position + n, this.MAX_POS)]!;
 	}
 
 	/**
@@ -188,8 +205,7 @@ export class Parser {
 		this.commentBuffer = remaining;
 	}
 
-	private endLoc(token?: Token): { endLine: number; endCol: number } {
-		token ??= this.lookBack();
+	private endLoc(token: Token = this.lookBack()): { endLine: number; endCol: number } {
 		return { endLine: token.line, endCol: token.col + token.value.length };
 	}
 
@@ -346,11 +362,10 @@ export class Parser {
 
 	private parseAssignmentStatement(
 		assignee: AST.Expression,
-		operatorKind: AssignmentOperatorTokenKind,
+		operator: AST.AssignmentStatement['operator'],
 	): AST.AssignmentStatement {
 		this.advance();
 		const value = this.parseExpression();
-		const operator = assignMap[operatorKind]!; // 调用前已检查词元类型
 		const { line, col } = assignee;
 		return { kind: NodeKind.AssignmentStatement, assignee, value, operator, line, col, ...this.endLoc() };
 	}
@@ -406,22 +421,18 @@ export class Parser {
 			const right = this.parseLogicalExpression();
 			const closeToken = this.current();
 
-			let operator: AST.LogicalExpression['operator'];
-			switch (closeToken.kind) {
+			const operator = closeToken.kind;
+			switch (operator) {
 				case TokenKind.LOGIC_CLOSE_OR:
-					operator = LogicalOperator.OR;
 					if (!isOr) this.reportError(syntaxErrorFrom(closeToken, '逻辑「和」不能用「不坏」闭合喵！'));
 					break;
 				case TokenKind.LOGIC_CLOSE_NAND:
-					operator = LogicalOperator.NAND;
 					if (!isOr) this.reportError(syntaxErrorFrom(closeToken, '逻辑「和」不能用「不好」闭合喵！'));
 					break;
 				case TokenKind.LOGIC_CLOSE_AND:
-					operator = LogicalOperator.AND;
 					if (isOr) this.reportError(syntaxErrorFrom(closeToken, '逻辑「或」不能用「都好」闭合喵！'));
 					break;
 				case TokenKind.LOGIC_CLOSE_NOR:
-					operator = LogicalOperator.NOR;
 					if (isOr) this.reportError(syntaxErrorFrom(closeToken, '逻辑「或」不能用「都坏」闭合喵！'));
 					break;
 				case TokenKind.LOGIC_OR:
@@ -445,36 +456,34 @@ export class Parser {
 		const { line, col } = this.current();
 		const sections = [this.parseComparisonExpression()];
 		const operators: AST.SequenceExpression['operators'] = [];
-		let modeMask = 0b0_00; // 000 算术模式 | 100 比较模式
 
-		for (let token: Token; (token = this.current()).kind === TokenKind.OPERATOR && this.peek().kind === TokenKind.COMMA; ) {
-			const op = token.value;
-			switch (modeMask | (+OP_ARITH.has(op) << 1 || +OP_COMP_E.has(op))) {
-				// 模式对应：
-				case 0b101: // 1 比较模式|0 无算术|1 有比较
-				case 0b010: // 0 算术模式|1 有算术|0 无比较
+		sequence: for (let isArithmeticMode = true; this.peek().kind === TokenKind.COMMA; ) {
+			const token = this.current();
+			switch (token.kind) {
+				case TokenKind.ARITHMETIC_PLUS:
+				case TokenKind.ARITHMETIC_MINUS:
+				case TokenKind.ARITHMETIC_MULTIPLY:
+				case TokenKind.ARITHMETIC_DIVIDE:
+					if (isArithmeticMode) break; // 模式正确
+					throw syntaxErrorFrom(token, '比较之后就不能做算术了喵！');
+				case TokenKind.COMPARISON_EQUAL:
+				case TokenKind.COMPARISON_NOT_EQUAL:
+					isArithmeticMode = false; // 禁用算术模式
 					break;
-				// 模式变换：
-				case 0b001: // 0 算术模式|0 无算术|1 有比较
-					modeMask = 0b1_00; // 切为比较模式
-					break;
-				case 0b110: // 1 比较模式|1 有算术|0 无比较
-					throw syntaxErrorFrom(token, '比较之后就不能做算术了喵!');
-				// 符号非法：
-				case 0b000: // 0 算术模式|0 无算术|0 无比较
-				case 0b100: // 1 比较模式|0 无算术|0 无比较
-					throw syntaxErrorFrom(token, `'${op}' 不能用在节之间喵!`);
-				// 以下状态理论不可达：
-				case 0b011: // 0 算术模式|1 有算术|1 有比较
-				case 0b111: // 1 比较模式|1 有算术|1 有比较
-					throw errorFrom(token, '物理学不存在了喵！', Phase.INVARIANT);
+				case TokenKind.COMPARISON_GREATER:
+				case TokenKind.COMPARISON_LESS:
+				case TokenKind.COMPARISON_GREATER_EQUAL:
+				case TokenKind.COMPARISON_LESS_EQUAL:
+					throw syntaxErrorFrom(token, `'${token.value}' 不能用在节之间喵！`);
+				default:
+					break sequence;
 			}
 
-			operators.push(this.advance());
+			this.advance(); // 消费操作符
 			this.advance(); // 跳过逗号
+			operators.push(token);
 			sections.push(this.parseComparisonExpression());
 		}
-
 		if (sections.length === 1) return sections[0]!;
 
 		return { kind: NodeKind.SequenceExpression, sections, operators, line, col, ...this.endLoc() };
@@ -485,8 +494,9 @@ export class Parser {
 		const expressions = [this.parseAdditiveExpression()];
 		const operators: AST.ComparisonExpression['operators'] = [];
 
-		while (OP_COMP.has(this.current().value) && this.peek().kind !== TokenKind.COMMA) {
-			operators.push(this.advance());
+		for (let token: Token; isComparisonToken((token = this.current())) && this.peek().kind !== TokenKind.COMMA; ) {
+			this.advance();
+			operators.push(token);
 			expressions.push(this.parseAdditiveExpression());
 		}
 
@@ -500,15 +510,10 @@ export class Parser {
 	private parseAdditiveExpression(): AST.Expression {
 		let left = this.parseMultiplicativeExpression();
 
-		for (
-			let token = this.current();
-			(token.value === '+' || token.value === '-') && this.peek().kind !== TokenKind.COMMA;
-			token = this.current()
-		) {
-			this.advance();
+		for (let token: Token; isAdditiveToken((token = this.current())) && this.peek().kind !== TokenKind.COMMA; ) {
+			const { line, col } = this.advance();
 			const right = this.parseMultiplicativeExpression();
-			const { line, col, value: operator } = token;
-			left = { kind: NodeKind.ArithmeticExpression, left, operator, right, line, col, ...this.endLoc(token) };
+			left = { kind: NodeKind.ArithmeticExpression, left, operator: token, right, line, col, ...this.endLoc(token) };
 		}
 		return left;
 	}
@@ -516,15 +521,10 @@ export class Parser {
 	private parseMultiplicativeExpression(): AST.Expression {
 		let left = this.parseUnaryExpression();
 
-		for (
-			let token = this.current();
-			(token.value === '*' || token.value === '/') && this.peek().kind !== TokenKind.COMMA;
-			token = this.current()
-		) {
-			this.advance();
+		for (let token: Token; isMultiplicativeToken((token = this.current())) && this.peek().kind !== TokenKind.COMMA; ) {
+			const { line, col } = this.advance();
 			const right = this.parseUnaryExpression();
-			const { line, col, value: operator } = token;
-			left = { kind: NodeKind.ArithmeticExpression, left, operator, right, line, col, ...this.endLoc(token) };
+			left = { kind: NodeKind.ArithmeticExpression, left, operator: token, right, line, col, ...this.endLoc(token) };
 		}
 		return left;
 	}
@@ -535,10 +535,10 @@ export class Parser {
 		let operator: AST.UnaryExpression['operator'];
 		switch (tokenKind) {
 			case TokenKind.KEYWORD_CLONE:
-				operator = AssignmentOperator.COPY;
+				operator = TokenKind.ASSIGNMENT_LIKE;
 				break;
 			case TokenKind.KEYWORD_MOVE:
-				operator = AssignmentOperator.MOVE;
+				operator = TokenKind.ASSIGNMENT_ONLY;
 				break;
 			default:
 				return this.parseMemberAccessExpression();

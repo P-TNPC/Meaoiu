@@ -5,6 +5,7 @@
 		"outDir": "./dist",
 
 		// 环境规范
+		"strict": true,
 		"module": "nodenext",
 		"target": "esnext",
 		"lib": ["esnext"],
@@ -24,11 +25,11 @@
 		"noImplicitOverride": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
+		"allowUnusedLabels": false,
 		"noFallthroughCasesInSwitch": true,
 		"noPropertyAccessFromIndexSignature": true,
 
 		// 补充选项
-		"strict": true,
 		// "isolatedDeclarations": true,
 		"isolatedModules": false, // 一些打包器需启用，仅 tsc 则无需
 		"verbatimModuleSyntax": false, // 同上

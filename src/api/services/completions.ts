@@ -1,7 +1,7 @@
 // src/api/services/completions.ts
 
 import type * as AST from '../../core/ast.js';
-import { sortedKeywords } from '../../core/tokenizer.js';
+import { sortedKeywords } from '../../core/lexer/tokenizer.js';
 import type { ServiceState } from '../serviceState.js';
 import type { Position } from '../utils/lspUtils.js';
 import { SymbolKind, type Scope } from '../utils/symbolTable.js';

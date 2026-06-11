@@ -1,14 +1,14 @@
 // src/api/services/formatting.ts
 
 import type * as AST from '../../core/ast.js';
-import { AssignmentOperator, LogicalOperator, NodeKind } from '../../core/ast.js';
+import { NodeKind } from '../../core/ast.js';
 import { ParseMode, Parser } from '../../core/parser.js';
-import { isKeyword, tokenize } from '../../core/tokenizer.js';
+import { isKeyword, tokenize, TokenKind } from '../../core/lexer/tokenizer.js';
 
-interface FormattingOptions {
+type FormattingOptions = {
 	indentChar: string;
 	level: number;
-}
+};
 function indent(options: FormattingOptions): string {
 	return options.indentChar.repeat(options.level);
 }
@@ -84,17 +84,16 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 		}
 		case NodeKind.VariableDeclaration: {
 			const { initialization, identifier } = node;
-			if (initialization) {
-				const assignContent = printNodeContent(initialization, { ...options, level: 0 }).trim();
-				content = `${indent(options)}蹭 ${assignContent}`;
-			} else {
-				content = `${indent(options)}蹭 ${printIdentifier(identifier)}`;
-			}
+			const printedContent = initialization
+				? printNodeContent(initialization, { ...options, level: 0 }).trim()
+				: printIdentifier(identifier);
+			content = `${indent(options)}蹭 ${printedContent}`;
 			break;
 		}
 		case NodeKind.AssignmentStatement: {
 			const { operator, assignee, value } = node;
-			const o = operator === AssignmentOperator.MOVE ? '才是' : operator === AssignmentOperator.COPY ? '就像' : '就是';
+			const o =
+				operator === TokenKind.ASSIGNMENT_ONLY ? '才是' : operator === TokenKind.ASSIGNMENT_LIKE ? '就像' : '就是';
 			content = `${indent(options)}${printNodeContent(assignee, options)} ${o} ${printNodeContent(value, options)}`;
 			break;
 		}
@@ -144,13 +143,13 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 		}
 		case NodeKind.UnaryExpression: {
 			const { operator, argument } = node;
-			const op = operator === AssignmentOperator.COPY ? '高仿' : '抢走';
+			const op = operator === TokenKind.ASSIGNMENT_LIKE ? '高仿' : '抢走';
 			content = `${op} ${printNodeContent(argument, options)}`;
 			break;
 		}
 		case NodeKind.ArithmeticExpression: {
 			const { left, operator, right } = node;
-			content = `${printNodeContent(left, options)} ${operator} ${printNodeContent(right, options)}`;
+			content = `${printNodeContent(left, options)} ${operator.value} ${printNodeContent(right, options)}`;
 			break;
 		}
 		case NodeKind.ComparisonExpression: {
@@ -165,19 +164,15 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 		}
 		case NodeKind.LogicalExpression: {
 			const { left, operator, right } = node;
-			const o = {
-				[LogicalOperator.AND]: '和',
-				[LogicalOperator.OR]: '或',
-				[LogicalOperator.NOR]: '和',
-				[LogicalOperator.NAND]: '或',
-			};
-			const c = {
-				[LogicalOperator.AND]: '都好',
-				[LogicalOperator.OR]: '不坏',
-				[LogicalOperator.NOR]: '都坏',
-				[LogicalOperator.NAND]: '不好',
-			};
-			content = `${printNodeContent(left, options)} ${o[operator]} ${printNodeContent(right, options)} ${c[operator]}`;
+			const [o, c] = (
+				{
+					[TokenKind.LOGIC_CLOSE_AND]: ['和', '都好'],
+					[TokenKind.LOGIC_CLOSE_OR]: ['或', '不坏'],
+					[TokenKind.LOGIC_CLOSE_NOR]: ['和', '都坏'],
+					[TokenKind.LOGIC_CLOSE_NAND]: ['或', '不好'],
+				} as const
+			)[operator];
+			content = `${printNodeContent(left, options)} ${o} ${printNodeContent(right, options)} ${c}`;
 			break;
 		}
 		case NodeKind.SequenceExpression: {

@@ -19,5 +19,5 @@ export async function run(sourceCode: string, ioConfig: IOConfig, filePath: stri
 		console.error(formatError(err, sourceCode, filePath));
 	}
 	console.log('=============================');
-	end > start && (console.log(`耗时: ${end - start} 毫秒`), console.log('============================='));
+	if (end > start) (console.log(`耗时: ${end - start} 毫秒`), console.log('============================='));
 }
