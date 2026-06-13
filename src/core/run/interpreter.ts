@@ -11,7 +11,7 @@ import {
 	getMeaoiuType,
 	MeaoiuType,
 	type MeaoiuValue,
-	typeNames,
+	TypeName,
 } from '../typedef.js';
 import { autoKey, Environment } from './environment.js';
 import logger from './logger.js';
@@ -122,7 +122,7 @@ export async function evaluate(
 				const collection = resolveValue(await evaluate(objectNode, env, builtIns, boundaryEnv));
 
 				if (!(collection instanceof Environment)) {
-					throw runtimeErrorFrom(objectNode, `从${typeNames[MeaoiuType.COLLECTION]}里拿东西才能用「@」喵！`);
+					throw runtimeErrorFrom(objectNode, `从${TypeName.COLLECTION}里拿东西才能用「@」喵！`);
 				}
 
 				const name = await _evaluateMemberName(propertyNode, env, builtIns, boundaryEnv, collection, index => {
@@ -362,7 +362,7 @@ export async function evaluate(
 				}
 
 				const func = env.findFunction(funcName);
-				if (!func) throw runtimeErrorFrom(callee, `没有叫「${funcName}」的${typeNames[MeaoiuType.FUNCTION]}喵！`);
+				if (!func) throw runtimeErrorFrom(callee, `没有叫「${funcName}」的${TypeName.FUNCTION}喵！`);
 
 				// 从函数定义的参数块中，按顺序提取出参数的名字
 				const paramNames = func.parameters.body
@@ -401,9 +401,7 @@ export async function evaluate(
 				);
 				if (result instanceof ReturnValue) return result.value;
 				if (isSignal(result)) {
-					logger.warn(
-						`[ENV #${functionEnv.id}] 在${typeNames[MeaoiuType.FUNCTION]} '${funcName}' 中，只能把东西“叼回来”喵。`,
-					);
+					logger.warn(`[ENV #${functionEnv.id}] 在${TypeName.FUNCTION} '${funcName}' 中，只能把东西“叼回来”喵。`);
 				}
 				return null;
 			}
@@ -467,7 +465,7 @@ async function _evaluateCollectionElement(
 	name ||= autoKey(autoIndexCounter++); // 没有显式名字就自动生成
 
 	if (blockEnv.hasVariable(name)) {
-		throw runtimeErrorFrom(stmt, `${typeNames[MeaoiuType.COLLECTION]}里已经有一个叫做「${name}」的玩具了喵！`);
+		throw runtimeErrorFrom(stmt, `${TypeName.COLLECTION}里已经有一个叫做「${name}」的玩具了喵！`);
 	}
 
 	// 将这个元素“声明”到纸箱的环境中
@@ -493,7 +491,7 @@ async function _evaluateAssignment(
 		// 找到纸箱
 		const collection = resolveValue(await evaluate(objectNode, env, builtIns, boundaryEnv));
 		if (!(collection instanceof Environment)) {
-			throw runtimeErrorFrom(objectNode, `只能给${typeNames[MeaoiuType.COLLECTION]}的成员赋值喵！`);
+			throw runtimeErrorFrom(objectNode, `只能给${TypeName.COLLECTION}的成员赋值喵！`);
 		}
 
 		const name = await _evaluateMemberName(propertyNode, env, builtIns, boundaryEnv, collection, String);
@@ -534,8 +532,5 @@ async function _evaluateMemberName(
 				? catchOutRangeIndex(propKey) // 数字索引超出范围
 				: collection.orderedVariableNames[propKey - 1]!; // 索引存在，用它在有序列表里的名字
 	}
-	throw runtimeErrorFrom(
-		prop,
-		`${typeNames[MeaoiuType.COLLECTION]}的索引必须是${typeNames[MeaoiuType.NUMBER]}或${typeNames[MeaoiuType.STRING]}喵！`,
-	);
+	throw runtimeErrorFrom(prop, `${TypeName.COLLECTION}的索引必须是${TypeName.NUMBER}或${TypeName.STRING}喵！`);
 }

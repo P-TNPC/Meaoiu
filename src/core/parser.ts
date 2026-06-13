@@ -96,7 +96,7 @@ function isAssignmentOperator(kind: TokenKind): kind is AST.AssignmentStatement[
 	return kind === TokenKind.ASSIGNMENT_IS || kind === TokenKind.ASSIGNMENT_LIKE || kind === TokenKind.ASSIGNMENT_ONLY;
 }
 
-export class Parser {
+class Parser {
 	private readonly tokens: Token[];
 	private readonly MODE: ParseMode;
 	private readonly MAX_POS: number;
@@ -693,4 +693,8 @@ export class Parser {
 		const callee = this.parseIdentifier();
 		return { kind: NodeKind.CallExpression, args, callee, line, col, ...this.endLoc() };
 	}
+}
+
+export function parse(tokens: Token[], mode: ParseMode = ParseMode.STRICT): ParseResult {
+	return new Parser(tokens, mode).parse();
 }

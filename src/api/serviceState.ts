@@ -1,8 +1,8 @@
 // src/api/serviceState.ts
 
 import { MeaoiuBuiltInNames } from '../core/builtIns.js';
-import { ParseMode, Parser, type ParseResult } from '../core/parser.js';
 import { tokenize } from '../core/lexer/tokenizer.js';
+import { ParseMode, parse, type ParseResult } from '../core/parser.js';
 import { analyzeSymbols, type AnalyzeResult } from './utils/symbolAnalyzer.js';
 
 type DocState = { version: number; getText: () => string }; // 适配 VsCode 格式
@@ -47,9 +47,7 @@ export class ServiceState {
 
 	constructor(version: number, sourceCode: string, useOnebased = true) {
 		this.#version = version;
-
-		const tokens = tokenize(sourceCode, { useOnebased });
-		this.#parseResult = new Parser(tokens, ParseMode.TOLERANT).parse();
+		this.#parseResult = parse(tokenize(sourceCode, { useOnebased }), ParseMode.TOLERANT);
 	}
 
 	get version(): number {

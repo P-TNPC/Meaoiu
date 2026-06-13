@@ -15,15 +15,25 @@ export const enum MeaoiuType {
 	UNKNOWN, // 不懂
 }
 
+export const enum TypeName {
+	NUMBER = '摸数',
+	STRING = '闲话',
+	BOOLEAN = '好坏',
+	NULL = '空碗',
+	FUNCTION = '计谋',
+	COLLECTION = '纸箱',
+	UNKNOWN = '不懂',
+}
+
 export const typeNames = {
-	[MeaoiuType.NUMBER]: '摸数',
-	[MeaoiuType.STRING]: '闲话',
-	[MeaoiuType.BOOLEAN]: '好坏',
-	[MeaoiuType.NULL]: '空碗',
-	[MeaoiuType.FUNCTION]: '计谋',
-	[MeaoiuType.COLLECTION]: '纸箱',
-	[MeaoiuType.UNKNOWN]: '不懂',
-} as const satisfies Record<MeaoiuType, string>;
+	[MeaoiuType.NUMBER]: TypeName.NUMBER,
+	[MeaoiuType.STRING]: TypeName.STRING,
+	[MeaoiuType.BOOLEAN]: TypeName.BOOLEAN,
+	[MeaoiuType.NULL]: TypeName.NULL,
+	[MeaoiuType.FUNCTION]: TypeName.FUNCTION,
+	[MeaoiuType.COLLECTION]: TypeName.COLLECTION,
+	[MeaoiuType.UNKNOWN]: TypeName.UNKNOWN,
+} as const satisfies Record<MeaoiuType, TypeName>;
 
 type TypeMapKey = Lowercase<keyof typeof MeaoiuType>;
 const typeMap = {
@@ -61,13 +71,11 @@ export function checkArithmeticOperation(
 	switch (op.kind) {
 		case TokenKind.ARITHMETIC_PLUS:
 			if (leftType === MeaoiuType.STRING || leftType === MeaoiuType.COLLECTION) return undefined;
-			return `「${op.value}」操作符只能用在「${typeNames[MeaoiuType.NUMBER]}」、「${typeNames[MeaoiuType.STRING]}」或「${
-				typeNames[MeaoiuType.COLLECTION]
-			}」上喵！`;
+			return `「${op.value}」操作符只能用在「${TypeName.NUMBER}」、「${TypeName.STRING}」或「${TypeName.COLLECTION}」上喵！`;
 		case TokenKind.ARITHMETIC_MINUS:
 		case TokenKind.ARITHMETIC_MULTIPLY:
 		case TokenKind.ARITHMETIC_DIVIDE:
-			return `「${op.value}」操作符只能用于两个「${typeNames[MeaoiuType.NUMBER]}」之间喵！`;
+			return `「${op.value}」操作符只能用于两个「${TypeName.NUMBER}」之间喵！`;
 		default:
 			const _o: never = op;
 			return `「${_o}」怎么会是操作符喵？`;
@@ -94,7 +102,7 @@ export function checkComparisonOperation(
 
 	// 且只能是数字或字符串
 	if (leftType !== MeaoiuType.NUMBER && leftType !== MeaoiuType.STRING) {
-		return `「${op.value}」操作符只能用在「${typeNames[MeaoiuType.NUMBER]}」或「${typeNames[MeaoiuType.STRING]}」上喵！`;
+		return `「${op.value}」操作符只能用在「${TypeName.NUMBER}」或「${TypeName.STRING}」上喵！`;
 	}
 
 	return undefined; // 合法

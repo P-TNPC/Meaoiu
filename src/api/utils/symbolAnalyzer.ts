@@ -100,16 +100,21 @@ class SymbolAnalyzer {
 				this.leaveScope();
 				break;
 			}
-			case NodeKind.IfExpression: {
+			case NodeKind.IfExpression:
 				this.visit(node.condition);
 				this.visit(node.consequent);
 				this.visit(node.alternate);
 				break;
-			}
 			case NodeKind.LoopExpression:
 				this.visit(node.body);
 				break;
-			case NodeKind.UnaryExpression:
+			case NodeKind.UnaryExpression: {
+				const { operator, argument } = node;
+				this.visit(argument);
+				if (operator !== TokenKind.ASSIGNMENT_ONLY || argument.kind !== NodeKind.Identifier) break;
+				this.markAsMoved(argument.symbol);
+				break;
+			}
 			case NodeKind.ReturnStatement:
 			case NodeKind.AmbushStatement:
 				this.visit(node.argument);

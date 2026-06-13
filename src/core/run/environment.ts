@@ -3,7 +3,7 @@
 import type * as AST from '../ast.js';
 import { TokenKind } from '../lexer/tokenizer.js';
 import logger from '../run/logger.js';
-import { MeaoiuType, typeNames, type MeaoiuValue } from '../typedef.js';
+import { TypeName, type MeaoiuValue } from '../typedef.js';
 import {
 	isReferenceLink,
 	isSignal,
@@ -104,7 +104,7 @@ export class Environment {
 		const scope = this.findVariableScope(name);
 		if (!scope) {
 			const errorMessage = this.findFunction(name)
-				? `是不是想把${typeNames[MeaoiuType.FUNCTION]}「${name}」当成玩具喵？`
+				? `是不是想把${TypeName.FUNCTION}「${name}」当成玩具喵？`
 				: `没找到叫做「${name}」的玩具，是不是被你藏起来了喵？`;
 			throw new Error(`咦？${errorMessage}`);
 		}

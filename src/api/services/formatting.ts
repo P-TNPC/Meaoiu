@@ -2,8 +2,8 @@
 
 import type * as AST from '../../core/ast.js';
 import { NodeKind } from '../../core/ast.js';
-import { ParseMode, Parser } from '../../core/parser.js';
 import { isKeyword, tokenize, TokenKind } from '../../core/lexer/tokenizer.js';
+import { parse, ParseMode } from '../../core/parser.js';
 
 type FormattingOptions = {
 	indentChar: string;
@@ -217,8 +217,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 }
 
 export function getFormattedCode(sourceCode: string): string {
-	const parser = new Parser(tokenize(sourceCode, { ignoreComments: false }), ParseMode.TOLERANT);
-	const ast = parser.parse().program;
+	const ast = parse(tokenize(sourceCode, { ignoreComments: false }), ParseMode.TOLERANT).program;
 	const options: FormattingOptions = { indentChar: '\t', level: 0 };
 	return printNodeContent(ast, options);
 }

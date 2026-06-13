@@ -180,7 +180,7 @@ export function checkArgsForBuiltIn(builtIn: MeaoiuBuiltIns[BuiltInName], args: 
 	if (MAX_INDEX_T < 0) return undefined;
 
 	check: for (let i = 0; i < args.length; i++) {
-		const paramType = paramTypes[i > MAX_INDEX_T ? MAX_INDEX_T : i]!;
+		const paramType = paramTypes[Math.min(i, MAX_INDEX_T)]!;
 		if (paramType.length < 1) continue;
 
 		const argType = getMeaoiuType(args[i]!);
