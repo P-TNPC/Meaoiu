@@ -21,15 +21,15 @@ export type SymbolInfo = {
 	kind: SymbolKind;
 	tag: SymbolTag;
 	type: MeaoiuType;
-	valueRef?: SymbolInfo | undefined;
+	valueRef: SymbolInfo | undefined;
 	declarations: AST.Identifier[]; // 在哪里声明的
 	references: AST.Identifier[]; // 在哪里被引用的
-	isBuiltIn?: boolean; // 是否自家喵
+	isBuiltIn: boolean; // 是否自家喵
 };
 
 // 描述一个作用域
 export type Scope = {
-	parent?: Scope; // 父作用域
+	parent: Scope | undefined; // 父作用域
 	children: Scope[]; // 子作用域
 	symbols: Map<string, SymbolInfo>; // 在本作用域内声明的符号
 };

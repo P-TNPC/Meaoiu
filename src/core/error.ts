@@ -12,9 +12,7 @@ export const enum Phase {
 	RUNTIME,
 }
 
-type StartPosition = { line: number; col: number };
-type EndPosition = { endLine: number; endCol: number } | { endLine?: never; endCol?: never };
-type ErrorParams = { message: string; phase: Phase } & StartPosition & EndPosition;
+type ErrorParams = { message: string; phase: Phase; line: number; col: number; endLine: number; endCol: number };
 
 export class MeaoiuError {
 	public readonly message: string;
@@ -24,8 +22,7 @@ export class MeaoiuError {
 	public readonly endLine: number;
 	public readonly endCol: number;
 
-	constructor(params: ErrorParams) {
-		const { message, phase, line, col, endLine = line, endCol = col } = params;
+	constructor({ message, phase, line, col, endLine, endCol }: ErrorParams) {
 		this.message = message;
 		this.phase = phase;
 		this.line = line;
@@ -56,29 +53,19 @@ export function errorFrom(ele: AST.Node | Token, message: string, phase: Phase):
 	return new MeaoiuError({
 		message,
 		phase,
-		...('endLine' in ele ? ele : { ...ele, endLine: ele.line, endCol: ele.col + (ele.value.length || 1) }),
-	}); // 若来 ErrorNode，自然以 ErrorNode 的 message 覆盖；若是 Token，尾端位置为 Token 末尾
+		...ele,
+		endCol: ele.endCol + +(ele.line === ele.endLine && ele.col === ele.endCol),
+	}); // 若来 ErrorNode，自然以 ErrorNode 的 message 覆盖
 }
 
-const parseIntOrNull = (input: string | undefined): number | null => {
-	if (input == null) return null; // undefined 或 null -> 空
-	const n = Number.parseInt(input, 10);
-	return Number.isNaN(n) ? null : n;
-};
-
 export function parseError(message: string, phase: Phase = Phase.UNKNOWN): MeaoiuError {
-	const errorParams = {
-		message,
-		phase,
-		line: -1,
-		col: -1,
-	};
-	const match = message.match(/\[(\d+):(\d+)\]/);
+	const errorParams = { message, phase, line: -1, col: -1, endLine: -1, endCol: -1 };
+	const match = /^\s*\[(\d+):(\d+)\]\s*/.exec(message);
 	if (match) {
 		const [rawPos, rawLine, rawCol] = match;
-		errorParams.message = message.replace(rawPos, '').trim(); // 移除匹配到的位置信息部分
-		errorParams.line = parseIntOrNull(rawLine) ?? errorParams.line;
-		errorParams.col = parseIntOrNull(rawCol) ?? errorParams.col;
+		errorParams.message = message.slice(rawPos.length); // 移除匹配到的位置信息部分
+		errorParams.endLine = errorParams.line = Number.parseInt(rawLine!, 10);
+		errorParams.endCol = (errorParams.col = Number.parseInt(rawCol!, 10)) + 1;
 	}
 	return new MeaoiuError(errorParams);
 }

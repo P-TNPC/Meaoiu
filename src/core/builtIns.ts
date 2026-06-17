@@ -4,7 +4,7 @@ import { Environment } from './run/environment.js';
 import type { MeaoiuRuntimeIO } from './run/io.js';
 import { getMeaoiuType, MeaoiuType, typeNames, type MeaoiuValue } from './typedef.js';
 
-export const MeaoiuBuiltInNames = [
+export const meaoiuBuiltInNames = [
 	'喵',
 	'祈求',
 	'呼噜',
@@ -25,7 +25,7 @@ export const MeaoiuBuiltInNames = [
 	'猫咪艺术',
 	'哈气',
 ] as const;
-type BuiltInName = (typeof MeaoiuBuiltInNames)[number];
+type BuiltInName = (typeof meaoiuBuiltInNames)[number];
 type BuiltInFunction = (args: MeaoiuValue[]) => MeaoiuValue | Promise<MeaoiuValue>;
 
 export type MeaoiuBuiltIns = Record<
@@ -37,10 +37,8 @@ export type MeaoiuBuiltIns = Record<
 	}
 >;
 
-const BuiltInFunctionNameSet = new Set(MeaoiuBuiltInNames);
-export function isBuiltInFunctionName(name: string): name is BuiltInName {
-	return (BuiltInFunctionNameSet as Set<string>).has(name);
-}
+export const builtInNameSet: ReadonlySet<BuiltInName> = new Set(meaoiuBuiltInNames);
+export const isBuiltInFunctionName = (name: string): name is BuiltInName => (builtInNameSet as Set<string>).has(name);
 
 export const createBuiltInFunctions = (io: MeaoiuRuntimeIO): MeaoiuBuiltIns => ({
 	// I/O

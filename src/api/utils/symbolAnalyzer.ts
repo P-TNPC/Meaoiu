@@ -2,7 +2,7 @@
 
 import type * as AST from '../../core/ast.js';
 import { NodeKind } from '../../core/ast.js';
-import type { MeaoiuBuiltInNames } from '../../core/builtIns.js';
+import { meaoiuBuiltInNames } from '../../core/builtIns.js';
 import { errorFrom, Phase, type MeaoiuError } from '../../core/error.js';
 import { TokenKind, type Token } from '../../core/lexer/tokenizer.js';
 import { checkArithmeticOperation, checkComparisonOperation, MeaoiuType } from '../../core/typedef.js';
@@ -94,12 +94,11 @@ class SymbolAnalyzer {
 		this.nodeScopeMap.set(node, this.currentScope);
 		switch (node.kind) {
 			case NodeKind.Program:
-			case NodeKind.BlockExpression: {
+			case NodeKind.BlockExpression:
 				this.enterScope();
 				for (const n of node.body) this.visit(n);
 				this.leaveScope();
 				break;
-			}
 			case NodeKind.IfExpression:
 				this.visit(node.condition);
 				this.visit(node.consequent);
@@ -436,7 +435,16 @@ class SymbolAnalyzer {
 			return;
 		}
 
-		const symbolInfo: SymbolInfo = { name, kind, tag, type, declarations: [declarationNode], references: [], valueRef };
+		const symbolInfo: SymbolInfo = {
+			name,
+			kind,
+			tag,
+			type,
+			valueRef,
+			declarations: [declarationNode],
+			references: [],
+			isBuiltIn: false,
+		};
 
 		this.currentScope.symbols.set(name, symbolInfo);
 		this.symbolMap.set(declarationNode, symbolInfo);
@@ -481,14 +489,15 @@ export type AnalyzeResult = {
 	nodeScopeMap: SymbolAnalyzer['nodeScopeMap'];
 };
 
-export function analyzeSymbols(ast: AST.Program, builtInNames: typeof MeaoiuBuiltInNames): AnalyzeResult {
-	const rootScope: Scope = { children: [], symbols: new Map() };
-	for (const name of builtInNames) {
+export function analyzeSymbols(ast: AST.Program): AnalyzeResult {
+	const rootScope: Scope = { parent: undefined, children: [], symbols: new Map() };
+	for (const name of meaoiuBuiltInNames) {
 		rootScope.symbols.set(name, {
 			name,
 			kind: SymbolKind.FUNCTION,
 			tag: SymbolTag.NORMAL,
 			type: MeaoiuType.FUNCTION,
+			valueRef: undefined,
 			declarations: [],
 			references: [],
 			isBuiltIn: true,

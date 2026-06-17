@@ -5,6 +5,7 @@ import { NodeKind } from './ast.js';
 import { MeaoiuError, Phase, errorFrom } from './error.js';
 import {
 	TokenKind,
+	newToken,
 	type AdditiveTokenKind,
 	type ComparisonTokenKind,
 	type MultiplicativeTokenKind,
@@ -48,10 +49,6 @@ const blockKindInfo = [
 }[]; // 0: 想法, 1: 纸箱
 
 const syntaxErrorFrom = (ele: Token, message: string) => errorFrom(ele, message, Phase.SYNTACTIC);
-
-function tokenTrailing({ line, col: prevCol, value: prevValue }: Token, kind: TokenKind, value = ''): Token {
-	return { kind, value, line, col: prevCol + prevValue.length } as Token<typeof kind>;
-}
 
 function errorNodeWith({ message, line, col, endLine, endCol }: MeaoiuError): AST.ErrorNode {
 	return { kind: NodeKind.ErrorNode, message, line, col, endLine, endCol };
@@ -108,13 +105,14 @@ class Parser {
 	private commentBuffer: Token[] = [];
 
 	constructor(tokens: Token[], mode: ParseMode = ParseMode.STRICT) {
+		this.MODE = mode;
 		// 确保有 EOF 哨兵，避免边界问题
 		if (!tokens.length || tokens[tokens.length - 1]!.kind !== TokenKind.EOF) {
-			tokens.push({ kind: TokenKind.EOF, value: 'EndOfFile', line: -1, col: -1 });
+			const EOF = newToken(TokenKind.EOF, 'EndOfFile', -1, -1, -1, -1);
+			tokens.push((this.reportError(errorFrom(EOF, '分词器可能坏了喵~', Phase.INVARIANT)), EOF));
 		}
 		this.tokens = tokens;
 		this.MAX_POS = tokens.length - 1;
-		this.MODE = mode;
 	}
 
 	// 当前 token（安全！）
@@ -194,10 +192,8 @@ class Parser {
 		const trailing: Token[] = [];
 		const remaining: Token[] = [];
 
-		for (const comment of this.commentBuffer) {
-			// 同一行的视为 trailing，不同一行的留作下一节点的 leading
-			(comment.line === anchorToken.line ? trailing : remaining).push(comment);
-		}
+		// 同一行的视为 trailing，不同一行的留作下一节点的 leading
+		for (const comment of this.commentBuffer) (comment.line === anchorToken.line ? trailing : remaining).push(comment);
 
 		if (trailing.length) (node.trailingComments ??= []).push(...trailing);
 
@@ -205,8 +201,8 @@ class Parser {
 		this.commentBuffer = remaining;
 	}
 
-	private endLoc(token: Token = this.lookBack()): { endLine: number; endCol: number } {
-		return { endLine: token.line, endCol: token.col + token.value.length };
+	private endLoc({ endLine, endCol }: Token = this.lookBack()): { endLine: number; endCol: number } {
+		return { endLine, endCol };
 	}
 
 	private reportError(error: MeaoiuError): void {
@@ -221,10 +217,10 @@ class Parser {
 	 */
 	private makeErrorTail(kind: TokenKind, why: string, where?: string): Token {
 		// 找到前一个 token 做锚点
-		const prevToken = this.lookBack();
-		const fakeTermToken = tokenTrailing(prevToken, kind);
+		const { endLine, endCol, value } = this.lookBack();
+		const fakeTermToken = newToken(kind, '', endLine, endCol, endLine, endCol);
 
-		const errMsg = `${where ?? `在「${prevToken.value}」后`}${why}`;
+		const errMsg = `${where ?? `在「${value}」后`}${why}`;
 		this.reportError(syntaxErrorFrom(fakeTermToken, errMsg));
 
 		return fakeTermToken;
@@ -239,19 +235,18 @@ class Parser {
 	}
 
 	private synchronize(): void {
-		// 首先尝试找到 TERMINATOR 或语句开始
+		// 首先尝试找到 TERMINATOR 或语句开始，跳过闭块符，顺便捕获块配对问题
 		for (let tokenKind = this.current().kind; tokenKind !== TokenKind.EOF; tokenKind = this.next().kind) {
 			if (tokenKind === TokenKind.TERMINATOR) return void this.advance();
-
 			if (isStartToken(tokenKind)) return;
 
-			if (tokenKind === TokenKind.BLOCK_END || tokenKind === TokenKind.COLLECTION_END) {
-				const depthIndex = +(tokenKind === TokenKind.COLLECTION_END);
-				if (this.blockDepth[depthIndex]! > 0) return;
-				const token = this.current();
-				this.errors.push(syntaxErrorFrom(token, `这个「${token.value}」被孤立了喵！`));
-				this.blockDepth[depthIndex] = 0; // 龟苓膏之术，对症下药喵
-			}
+			const depthIndex = +(tokenKind === TokenKind.COLLECTION_END);
+			if (!depthIndex && tokenKind !== TokenKind.BLOCK_END) continue;
+
+			if (this.blockDepth[depthIndex]! > 0) return;
+			const token = this.current();
+			this.reportError(syntaxErrorFrom(token, `这个「${token.value}」被孤立了喵！`));
+			this.blockDepth[depthIndex] = 0; // 龟苓膏之术，对症下药喵
 		}
 	}
 
@@ -265,9 +260,8 @@ class Parser {
 	}
 
 	public parse(): ParseResult {
-		const startToken = this.current();
-		const { kind: startKind, line, col } = startToken;
-		const program: AST.Program = { kind: NodeKind.Program, body: [], line, col, endLine: line, endCol: col };
+		const { kind: startKind, line, col, endLine, endCol } = this.current();
+		const program: AST.Program = { kind: NodeKind.Program, body: [], line, col, endLine, endCol };
 
 		for (let tokenKind = startKind; tokenKind !== TokenKind.EOF; tokenKind = this.current().kind) {
 			if (tokenKind === TokenKind.TERMINATOR) this.advance();
@@ -281,9 +275,7 @@ class Parser {
 			this.commentBuffer = [];
 		}
 
-		const { line: endLine, col: endCol, value: endValue } = this.tokens[this.position - 1] ?? startToken;
-		program.endLine = endLine;
-		program.endCol = endCol + endValue.length;
+		({ endLine: program.endLine, endCol: program.endCol } = this.tokens[Math.max(0, this.position - 1)]!);
 
 		return { program, errors: this.errors };
 	}
@@ -339,8 +331,7 @@ class Parser {
 			this.collectTrailingComments(node, termToken);
 			return node;
 		} catch (e) {
-			const error =
-				e instanceof MeaoiuError ? e : syntaxErrorFrom(startToken, e instanceof Error ? e.message : String(e));
+			const error = e instanceof MeaoiuError ? e : errorFrom(startToken, String(e), Phase.UNKNOWN);
 			this.reportError(error);
 			this.synchronize();
 			return errorNodeWith(error);
@@ -577,7 +568,13 @@ class Parser {
 		let node: AST.Expression;
 		switch (tokenKind) {
 			case TokenKind.NUMBER:
-				node = { kind: NodeKind.NumericLiteral, value: parseFloat(value), line, col, ...this.endLoc(startToken) };
+				node = {
+					kind: NodeKind.NumericLiteral,
+					value: Number.parseFloat(value),
+					line,
+					col,
+					...this.endLoc(startToken),
+				};
 				break;
 			case TokenKind.STRING:
 				node = { kind: NodeKind.StringLiteral, value, line, col, ...this.endLoc(startToken) };
@@ -602,8 +599,10 @@ class Parser {
 			case TokenKind.TERMINATOR:
 			case TokenKind.EOF:
 				throw syntaxErrorFrom(startToken, '只说半句看不懂喵！');
+			case TokenKind.ERROR:
+				throw errorFrom(startToken, `这个词不对劲喵：${value}`, Phase.LEXICAL);
 			default:
-				throw syntaxErrorFrom(startToken, `看不懂的把戏喵: ${value}`);
+				throw syntaxErrorFrom(startToken, `看不懂的把戏喵：${value}`);
 		}
 		this.advance();
 

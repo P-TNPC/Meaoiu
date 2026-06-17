@@ -1,6 +1,5 @@
 // src/api/serviceState.ts
 
-import { MeaoiuBuiltInNames } from '../core/builtIns.js';
 import { tokenize } from '../core/lexer/tokenizer.js';
 import { ParseMode, parse, type ParseResult } from '../core/parser.js';
 import { analyzeSymbols, type AnalyzeResult } from './utils/symbolAnalyzer.js';
@@ -59,7 +58,6 @@ export class ServiceState {
 	}
 
 	get analyzeResult(): AnalyzeResult {
-		this.#analyzeResult ??= analyzeSymbols(this.parseResult.program, MeaoiuBuiltInNames);
-		return this.#analyzeResult;
+		return this.#analyzeResult ??= analyzeSymbols(this.parseResult.program);
 	}
 }

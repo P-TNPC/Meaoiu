@@ -52,8 +52,7 @@ function printNodeContent(node: AST.Node | undefined, options: FormattingOptions
 				const commentCount = nextStmt.leadingComments?.length ?? 0;
 				const hasFunction =
 					stmt.kind === NodeKind.FunctionDeclaration || nextStmt.kind === NodeKind.FunctionDeclaration;
-				const eL = Math.max(gap - commentCount, +hasFunction);
-				if (eL > 0) parts.push(...Array(eL).fill(''));
+				for (let eL = Math.max(gap - commentCount, +hasFunction); eL-- > 0; parts.push(''));
 			}
 			return parts.join('\n');
 		}

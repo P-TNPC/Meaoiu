@@ -1,7 +1,7 @@
 // src/core/lexer/tokenizer.ts
 
 import { preprocess } from './preprocessor.js';
-import { MeaoiuBuiltInNames } from '../builtIns.js';
+import { builtInNameSet } from '../builtIns.js';
 
 export const enum TokenKind {
 	ERROR, //不认识的字符喵
@@ -95,9 +95,21 @@ type TokenUnion = {
 		value: K extends keyof TokenValueMap ? TokenValueMap[K] : string;
 		line: number;
 		col: number;
+		endLine: number;
+		endCol: number; // 尾开区间
 	};
 }[TokenKind];
 export type Token<K extends TokenKind = TokenKind> = Extract<TokenUnion, { kind: K }>;
+export function newToken<K extends TokenKind>(
+	kind: K,
+	value: K extends keyof TokenValueMap ? TokenValueMap[K] : string,
+	startLine: number,
+	startCol: number,
+	endLine: number,
+	endCol: number,
+): Token<K> {
+	return { kind, value, line: startLine, col: startCol, endLine, endCol } as unknown as Token<K>;
+}
 
 const KEYWORDS = {
 	蹭: TokenKind.KEYWORD_USE,
@@ -138,15 +150,26 @@ export type TokenizerOptions = {
 	useOnebased?: boolean;
 };
 
+const enum FuncDefState {
+	NOT_DEF = 0,
+	PASS_PARAM,
+	GET_NAME,
+}
+const enum FuncCallState {
+	OK = 0,
+	SEEK_PARAM = -1,
+	SEEKING_PARAM = 0,
+	SEEK_NAME = -3,
+	SEEKING_NAME = -2,
+	MISSED = -2,
+	PASSED = 1,
+}
+
 export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[] {
 	const { ignoreComments = true, convertNonAscii = true, useOnebased = true } = options ?? {};
-	const OriginBase = +useOnebased;
 	if (convertNonAscii) sourceCode = preprocess(sourceCode);
 	const sourceCodeLen = sourceCode.length;
-
-	// 小本本：记函数
-	const functionNames = new Set<string>(MeaoiuBuiltInNames);
-	let expectingFuncNameAfterParamEnd = false;
+	const OriginBase = +useOnebased;
 
 	const tokens: Token[] = [];
 	let line = OriginBase,
@@ -154,14 +177,23 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 		cursor = 0;
 
 	const charAt = (cursor: number) => String.fromCodePoint(sourceCode.codePointAt(cursor)!);
-	const advance = (steps = 1) => {
+	const advance = (steps: number) => {
 		const target = cursor + steps;
 		const end = Math.min(target, sourceCodeLen);
 		while (cursor < end) sourceCode[cursor++] === '\n' ? (line++, (col = OriginBase)) : col++;
 		cursor = target;
 	};
 
-	while (cursor < sourceCodeLen) {
+	const functionNames = new Set<string>(builtInNameSet); // 小本本：记函数
+	const susIdIndexes: number[] = []; // 嫌疑标识符名单
+	let funcCallState = FuncCallState.OK; // 自然衰变的神奇喵喵标签
+	scanSourceCode: for (
+		let funcDefState = FuncDefState.NOT_DEF;
+		cursor < sourceCodeLen;
+		funcCallState++ === FuncCallState.MISSED
+			? (susIdIndexes.push(tokens.length - 2), (funcCallState = FuncCallState.PASSED))
+			: 0
+	) {
 		const startLine = line;
 		const startCol = col;
 		const char = charAt(cursor);
@@ -190,25 +222,22 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 
 			if (!ignoreComments) {
 				const commentContent = sourceCode.slice(contentStart, i);
-				tokens.push({ kind: TokenKind.COMMENT, value: commentContent, line: startLine, col: startCol });
+				tokens.push(newToken(TokenKind.COMMENT, commentContent, startLine, startCol, line, col));
 			}
 			continue;
 		}
 		// 关键字
-		let matchedKeyword: Keyword | undefined;
 		for (const keyword of sortedKeywords) {
-			if (sourceCode.startsWith(keyword, cursor)) {
-				matchedKeyword = keyword;
-				break;
-			}
-		}
-		if (matchedKeyword) {
-			const tokenKind = KEYWORDS[matchedKeyword];
-			tokens.push({ kind: tokenKind, value: matchedKeyword, line: startLine, col: startCol } as Token<typeof tokenKind>);
-			advance(matchedKeyword.length);
+			if (!sourceCode.startsWith(keyword, cursor)) continue;
 
-			if (tokenKind === TokenKind.KEYWORD_DEF) expectingFuncNameAfterParamEnd = true; // '想要'
-			continue;
+			const tokenKind = KEYWORDS[keyword];
+
+			advance(keyword.length);
+			tokens.push(newToken(tokenKind, keyword, startLine, startCol, line, col));
+
+			if (tokenKind === TokenKind.KEYWORD_DEF) funcDefState = FuncDefState.PASS_PARAM;
+			else if (tokenKind === TokenKind.KEYWORD_CALL) funcCallState = FuncCallState.SEEK_PARAM;
+			continue scanSourceCode;
 		}
 		// 二字原子
 		doubleCharAtomic: if (cursor + 1 < sourceCodeLen) {
@@ -232,6 +261,7 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 					break;
 				case '=]':
 					kind = TokenKind.COLLECTION_END;
+					funcDefState &&= FuncDefState.GET_NAME;
 					break;
 				case '[#':
 					kind = TokenKind.BLOCK_START;
@@ -242,9 +272,8 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 				default:
 					break doubleCharAtomic;
 			}
-			tokens.push({ kind, value: twoCharSymbol, line: startLine, col: startCol } as Token<typeof kind>);
 			advance(2);
-			if (kind !== TokenKind.COLLECTION_END) expectingFuncNameAfterParamEnd = false;
+			tokens.push(newToken(kind, twoCharSymbol, startLine, startCol, line, col));
 			continue;
 		}
 		// 单字原子
@@ -277,12 +306,13 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 					break;
 				case '~':
 					kind = TokenKind.TERMINATOR;
+					if (funcDefState === FuncDefState.GET_NAME) funcDefState = FuncDefState.NOT_DEF;
 					break;
 				default:
 					break singleCharAtomic;
 			}
-			tokens.push({ kind, value: char, line: startLine, col: startCol } as Token<typeof kind>);
-			advance(charLen);
+			advance(1);
+			tokens.push(newToken(kind, char, startLine, startCol, line, col));
 			continue;
 		}
 		// 非负数字，十进制整数及小数
@@ -291,13 +321,12 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 
 			while (i < sourceCodeLen && isNumChar(sourceCode[i]!)) i++;
 			if (i + 1 < sourceCodeLen && sourceCode[i] === '.' && isNumChar(sourceCode[i + 1]!)) {
-				i++;
-				while (i < sourceCodeLen && isNumChar(sourceCode[i]!)) i++;
+				for (i++; i < sourceCodeLen && isNumChar(sourceCode[i]!); i++);
 			}
 			const numStr = sourceCode.slice(cursor, i);
 			advance(i - cursor);
 
-			tokens.push({ kind: TokenKind.NUMBER, value: numStr, line: startLine, col: startCol });
+			tokens.push(newToken(TokenKind.NUMBER, numStr, startLine, startCol, line, col));
 			continue;
 		}
 		// 字符串
@@ -309,119 +338,102 @@ export function tokenize(sourceCode: string, options?: TokenizerOptions): Token[
 			const str = sourceCode.slice(contentStart, i);
 			advance(i - cursor + charLen);
 
-			tokens.push({ kind: TokenKind.STRING, value: str, line: startLine, col: startCol });
+			tokens.push(newToken(TokenKind.STRING, str, startLine, startCol, line, col));
 			continue;
 		}
 		// 标识符
-		if (ID_START_REGEX.test(char) || char === '{') {
-			let identifier = '',
-				identifierStartCol = startCol,
+		const isCurlyIdentifier = char === '{';
+		if (isCurlyIdentifier || ID_START_REGEX.test(char)) {
+			let identifierStartCol = startCol,
+				contentStart = cursor,
 				i = cursor;
 
-			if (char === '{') {
-				const contentStart = (i += charLen); // 跳过 '{' 并记录内容起点
+			scanId: if (isCurlyIdentifier) {
+				funcCallState = FuncCallState.OK;
+				contentStart = i += charLen; // 跳过 '{' 并记录内容起点
 				identifierStartCol += charLen; // 记录标识符真正的起始列
 
 				while (i < sourceCodeLen && sourceCode[i] !== '}') i++;
-				identifier = sourceCode.slice(contentStart, i++); // 截取标识并跳过闭合的 '}'，未闭合会多越界一步但安全
+				if (i !== contentStart) break scanId;
+				// 空白则记录错误并跳出
+				advance(2); // 跳过一对 '{}'
+				tokens.push(newToken(TokenKind.ERROR, sourceCode.slice(i - 1, i + 1), startLine, startCol, line, col));
+				continue;
 			} else {
-				parseIdentifier: while (i < sourceCodeLen) {
+				if (funcCallState === FuncCallState.SEEKING_PARAM) funcCallState = FuncCallState.SEEK_NAME;
+				else if (funcCallState === FuncCallState.SEEKING_NAME) funcCallState = FuncCallState.OK;
+
+				while (i < sourceCodeLen) {
 					const idChar = charAt(i);
 					if (!ID_CONTINUE_REGEX.test(idChar)) break;
-					// 有粘连的关键字则打断
-					for (const keyword of sortedKeywords) if (sourceCode.startsWith(keyword, i)) break parseIdentifier;
+					for (const keyword of sortedKeywords) if (sourceCode.startsWith(keyword, i)) break scanId; // 有粘连的关键字则打断
 					i += idChar.length;
 				}
-				identifier = sourceCode.slice(cursor, i);
 			}
 			advance(i - cursor);
 
 			// 统一创建标识符词元
-			if (identifier) {
-				tokens.push({
-					kind: TokenKind.IDENTIFIER,
-					value: identifier,
-					line: startLine,
-					col: identifierStartCol,
-				});
+			const identifier = sourceCode.slice(contentStart, i); // 截取标识
+			tokens.push(newToken(TokenKind.IDENTIFIER, identifier, startLine, identifierStartCol, line, col));
+			if (isCurlyIdentifier) advance(1); // 跳过闭合的 '}'
 
-				if (expectingFuncNameAfterParamEnd) {
-					// 抓到了！这个标识符就是函数名喵！
-					functionNames.add(identifier);
-					expectingFuncNameAfterParamEnd = false; // 重置状态
-				}
+			if (funcDefState === FuncDefState.GET_NAME) {
+				functionNames.add(identifier); // 抓到了！这个标识符就是函数名喵！
+				funcDefState = FuncDefState.NOT_DEF; // 重置状态
 			}
 			continue;
 		}
 
 		// 不认识的字符喵
-		tokens.push({ kind: TokenKind.ERROR, value: char, line: startLine, col: startCol });
-		console.error('不认识的字符喵:', char);
-
 		advance(charLen);
+		tokens.push(newToken(TokenKind.ERROR, char, startLine, startCol, line, col));
+		console.error('不认识的字符喵:', char);
 	}
+	if (funcCallState === FuncCallState.MISSED) susIdIndexes.push(tokens.length - 1); // 补尾
 
-	tokens.push({ kind: TokenKind.EOF, value: 'EndOfFile', line, col });
-	return repairCallTokens(tokens, functionNames);
+	tokens.push(newToken(TokenKind.EOF, 'EndOfFile', line, col, line, col));
+	return susIdIndexes.length ? repairCallTokens(tokens, functionNames, susIdIndexes) : tokens;
 }
 
 /**
  * 遍历原始 Token 列表，修复被错误合并的 `扒纸箱名函数名`。
  */
-function repairCallTokens(tokens: Token[], functionNames: Set<string>): Token[] {
-	// 为了最高效的匹配，按长度降序排序
-	// 这样能确保 `喵` 不会错误地匹配 `xxx高级喵` 的 `喵`
+function repairCallTokens(tokens: Token[], functionNames: Set<string>, indexesToSplit: number[]): Token[] {
+	// 按长度降序排序，确保 `喵` 不会错误地匹配 `xxx高级喵` 的 `喵`
 	const sortedFunctionNames = Array.from(functionNames).sort((a, b) => b.length - a.length);
 
 	const repairedTokens: Token[] = [];
-	const lastIndex = tokens.length - 1;
-	let i = 0;
-	scanTokens: while (i < lastIndex) {
+	scanTokens: for (let i = 0, j = 0, indexToSplit = indexesToSplit[j]; i < tokens.length; i++) {
 		const currentToken = tokens[i]!;
-		const nextToken = tokens[i + 1]!;
-
 		// 检查是否是需要修复的目标
-		if (
-			currentToken.kind !== TokenKind.KEYWORD_CALL || // 不是 '扒'
-			nextToken.kind !== TokenKind.IDENTIFIER || // 后面无跟着的标识符
-			tokens[i + 2]?.kind === TokenKind.IDENTIFIER // 后面跟着第二个标识符
-		) {
-			// 不是需要修复的目标，或者是一个安全的 `扒 纸箱名 函数名`
+		if (i !== indexToSplit) {
 			repairedTokens.push(currentToken);
-			i++;
 			continue;
 		}
+		indexToSplit = indexesToSplit[Math.min(++j, indexesToSplit.length - 1)];
 
-		// 找到了一个潜在目标，例如 '扒 纸箱名函数名 ~'
-		const { value: valueToSplit, line, col } = nextToken;
-
+		// 匹配潜在目标
+		const { value: valueToSplit, line, col, endLine, endCol } = currentToken;
 		for (const funcName of sortedFunctionNames) {
 			// 检查这个函数名是不是标识符的后缀
-			if (!valueToSplit.endsWith(funcName) || valueToSplit.length <= funcName.length) continue;
+			if (valueToSplit.length <= funcName.length || !valueToSplit.endsWith(funcName)) continue;
 			// 找到了！是它喵！
 			const collectionName = valueToSplit.slice(0, -funcName.length);
+			const splitCol = col + collectionName.length;
 
 			// 创建 “纸箱名” 及 “函数名”
-			const collectionToken: Token = { kind: TokenKind.IDENTIFIER, value: collectionName, line, col };
-			const functionToken: Token = {
-				kind: TokenKind.IDENTIFIER,
-				value: funcName,
-				line,
-				col: col + collectionName.length,
-			};
+			const collectionToken = newToken(TokenKind.IDENTIFIER, collectionName, line, col, line, splitCol);
+			const functionToken = newToken(TokenKind.IDENTIFIER, funcName, line, splitCol, endLine, endCol);
 
 			// 推入修复后的版本
-			repairedTokens.push(currentToken /*扒*/, collectionToken /*纸箱名*/, functionToken /*函数名*/);
+			repairedTokens.push(collectionToken /*纸箱名*/, functionToken /*函数名*/);
 
-			i += 2; // 跳过 '扒' 和 '纸箱名函数名' 这两个原始 Token
 			continue scanTokens; // 匹配成功，检查下一组词元
 		}
 
-		// 如果没找到匹配，说明它就是一个普通的 `扒 某个变量`，正常推入
+		// 无匹配关键字，照常推入
 		repairedTokens.push(currentToken);
-		i++;
 	}
-	if (i <= lastIndex) repairedTokens.push(tokens[i]!); // 补尾
 
 	return repairedTokens;
 }
