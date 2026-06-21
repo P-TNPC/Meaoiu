@@ -17,7 +17,7 @@ type HoverInfo = {
 	range: Range;
 };
 
-function HoverInfoFrom(location: MeaoiuLocation, value: string, kind: MarkupKind): HoverInfo {
+function hoverInfoFrom(location: MeaoiuLocation, value: string, kind: MarkupKind): HoverInfo {
 	return { contents: { kind, value }, range: rangeOf(location) };
 }
 
@@ -44,7 +44,7 @@ export function getHoverInfo(
 		tag === SymbolTag.MOVED ? '\n\n(被标记为已移动)' : tag === SymbolTag.DECAYED ? '\n\n(源已被移走，不可用)' : ''
 	}\n\n${declaration ? `在 L${declaration.line}:${declaration.col} 处声明` : `(这是一个内置计谋)`}`;
 
-	return HoverInfoFrom(identifierNode, text, contentsKind);
+	return hoverInfoFrom(identifierNode, text, contentsKind);
 }
 
 // 查找定义

@@ -3,14 +3,7 @@
 import type * as AST from './ast.js';
 import { NodeKind } from './ast.js';
 import { MeaoiuError, Phase, errorFrom } from './error.js';
-import {
-	TokenKind,
-	newToken,
-	type AdditiveTokenKind,
-	type ComparisonTokenKind,
-	type MultiplicativeTokenKind,
-	type Token,
-} from './lexer/tokenizer.js';
+import { TokenKind, newToken, type ComparisonTokenKind, type Token } from './lexer/tokenizer.js';
 
 export const enum ParseMode {
 	STRICT,
@@ -54,12 +47,12 @@ function errorNodeWith({ message, line, col, endLine, endCol }: MeaoiuError): AS
 	return { kind: NodeKind.ErrorNode, message, line, col, endLine, endCol };
 }
 
-function isAdditiveToken(token: Token): token is Token<AdditiveTokenKind> {
-	return token.kind === TokenKind.ARITHMETIC_PLUS || token.kind === TokenKind.ARITHMETIC_MINUS;
+const enum ArithmeticPrecedence {
+	NONE = 0,
+	ADDITIVE = 1,
+	MULTIPLICATIVE = 2,
 }
-function isMultiplicativeToken(token: Token): token is Token<MultiplicativeTokenKind> {
-	return token.kind === TokenKind.ARITHMETIC_MULTIPLY || token.kind === TokenKind.ARITHMETIC_DIVIDE;
-}
+
 function isComparisonToken(token: Token): token is Token<ComparisonTokenKind> {
 	switch (token.kind) {
 		case TokenKind.COMPARISON_GREATER:
@@ -404,9 +397,8 @@ class Parser {
 
 		// 循环处理连续的逻辑操作：A 和 B 都好 或 C 不坏
 		for (
-			let tokenKind = this.current().kind, isOr: boolean;
-			(isOr = tokenKind === TokenKind.LOGIC_OR) || tokenKind === TokenKind.LOGIC_AND;
-			tokenKind = this.current().kind
+			let tokenKind: TokenKind, isOr: boolean;
+			(isOr = (tokenKind = this.current().kind) === TokenKind.LOGIC_OR) || tokenKind === TokenKind.LOGIC_AND;
 		) {
 			this.advance();
 			const right = this.parseLogicalExpression();
@@ -439,7 +431,6 @@ class Parser {
 			const { line, col } = left;
 			left = { kind: NodeKind.LogicalExpression, left, right, operator, line, col, ...this.endLoc() };
 		}
-
 		return left;
 	}
 
@@ -482,13 +473,13 @@ class Parser {
 
 	private parseComparisonExpression(): AST.Expression {
 		const { line, col } = this.current();
-		const expressions = [this.parseAdditiveExpression()];
+		const expressions = [this.parseArithmeticExpression(ArithmeticPrecedence.NONE)];
 		const operators: AST.ComparisonExpression['operators'] = [];
 
 		for (let token: Token; isComparisonToken((token = this.current())) && this.peek().kind !== TokenKind.COMMA; ) {
 			this.advance();
 			operators.push(token);
-			expressions.push(this.parseAdditiveExpression());
+			expressions.push(this.parseArithmeticExpression(ArithmeticPrecedence.NONE));
 		}
 
 		// 如果没有比较（只有一个操作数），就返回那个操作数本身
@@ -498,24 +489,29 @@ class Parser {
 		return { kind: NodeKind.ComparisonExpression, expressions, operators, line, col, ...this.endLoc() };
 	}
 
-	private parseAdditiveExpression(): AST.Expression {
-		let left = this.parseMultiplicativeExpression();
-
-		for (let token: Token; isAdditiveToken((token = this.current())) && this.peek().kind !== TokenKind.COMMA; ) {
-			const { line, col } = this.advance();
-			const right = this.parseMultiplicativeExpression();
-			left = { kind: NodeKind.ArithmeticExpression, left, operator: token, right, line, col, ...this.endLoc(token) };
-		}
-		return left;
-	}
-
-	private parseMultiplicativeExpression(): AST.Expression {
+	private parseArithmeticExpression(minPrecedence: ArithmeticPrecedence): AST.Expression {
 		let left = this.parseUnaryExpression();
 
-		for (let token: Token; isMultiplicativeToken((token = this.current())) && this.peek().kind !== TokenKind.COMMA; ) {
-			const { line, col } = this.advance();
-			const right = this.parseUnaryExpression();
-			left = { kind: NodeKind.ArithmeticExpression, left, operator: token, right, line, col, ...this.endLoc(token) };
+		arithmetic: for (let precedence = minPrecedence; this.peek().kind !== TokenKind.COMMA; ) {
+			const operator = this.current();
+			switch (operator.kind) {
+				case TokenKind.ARITHMETIC_MULTIPLY:
+				case TokenKind.ARITHMETIC_DIVIDE:
+					precedence = ArithmeticPrecedence.MULTIPLICATIVE;
+					break;
+				case TokenKind.ARITHMETIC_PLUS:
+				case TokenKind.ARITHMETIC_MINUS:
+					precedence = ArithmeticPrecedence.ADDITIVE;
+					break;
+				default:
+					break arithmetic;
+			}
+			if (precedence <= minPrecedence) break arithmetic;
+
+			this.advance();
+			const right = this.parseArithmeticExpression(precedence);
+			const { line, col } = left;
+			left = { kind: NodeKind.ArithmeticExpression, left, operator, right, line, col, ...this.endLoc() };
 		}
 		return left;
 	}

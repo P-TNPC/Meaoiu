@@ -24,45 +24,39 @@ export function getHighlightTokens(serviceState: ServiceState): HighlightToken[]
 	const parentMap = buildParentMap(serviceState.parseResult.program);
 	const { symbolMap } = serviceState.analyzeResult;
 
-	symbolMap.forEach(({ kind: symbolKind, tag: symbolTag, name: symbolName, isBuiltIn, declarations, references }) => {
+	const MASK_DECLARATION = 1 << tokenModifiers.indexOf('declaration');
+	const MASK_MODIFICATION = 1 << tokenModifiers.indexOf('modification');
+	const MASK_DEFAULT_LIBRARY = 1 << tokenModifiers.indexOf('defaultLibrary');
+	const MASK_DEPRECATED = 1 << tokenModifiers.indexOf('deprecated');
+
+	let needsSort = false,
+		prevLine = -1,
+		prevCol = -1;
+
+	symbolMap.forEach((symbolInfo, node) => {
+		if (node.kind !== NodeKind.Identifier) return;
+
+		const { kind: symbolKind, tag: symbolTag, isBuiltIn, declarations } = symbolInfo;
+		let modMask = -isBuiltIn & MASK_DEFAULT_LIBRARY;
+
+		// 区分声明处与引用处
+		if (declarations.includes(node)) modMask |= MASK_DECLARATION;
+		else {
+			if (symbolTag === SymbolTag.DECAYED) modMask |= MASK_DEPRECATED;
+			const parent = parentMap.get(node);
+			if (parent?.kind === NodeKind.AssignmentStatement && parent.assignee === node) modMask |= MASK_MODIFICATION;
+		}
+
+		const { line, col, symbol } = node;
 		const tokenTypeIndex = tokenTypeIndexMap[symbolKind];
+		highlightTokens.push({ line, col, length: symbol.length, tokenType: tokenTypeIndex, tokenModifiers: modMask });
 
-		// 收集声明
-		for (const dec of declarations) {
-			const modifiers = [tokenModifiers.indexOf('declaration')];
-			if (isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
-			const modBitmask = modifiers.reduce((a, b) => a | (1 << b), 0);
-			highlightTokens.push({
-				line: dec.line,
-				col: dec.col,
-				length: symbolName.length,
-				tokenType: tokenTypeIndex,
-				tokenModifiers: modBitmask,
-			});
-		}
-
-		// 收集引用
-		for (const ref of references) {
-			const modifiers: number[] = [];
-			if (isBuiltIn) modifiers.push(tokenModifiers.indexOf('defaultLibrary'));
-			if (symbolTag === SymbolTag.DECAYED) modifiers.push(tokenModifiers.indexOf('deprecated'));
-			const parent = parentMap.get(ref);
-			if (parent?.kind === NodeKind.AssignmentStatement && parent.assignee === ref) {
-				modifiers.push(tokenModifiers.indexOf('modification'));
-			}
-			const modBitmask = modifiers.reduce((a, b) => a | (1 << b), 0);
-			highlightTokens.push({
-				line: ref.line,
-				col: ref.col,
-				length: ref.symbol.length,
-				tokenType: tokenTypeIndex,
-				tokenModifiers: modBitmask,
-			});
-		}
+		if (needsSort) return;
+		needsSort = line < prevLine || (line === prevLine && col < prevCol);
+		prevLine = line;
+		prevCol = col;
 	});
 
-	// 严格按照行列顺序，将收集到的 token 排序！
-	return highlightTokens.sort((a, b) => {
-		return a.line !== b.line ? a.line - b.line : a.col - b.col;
-	});
+	// 按需排序
+	return needsSort ? highlightTokens.sort((a, b) => a.line - b.line || a.col - b.col) : highlightTokens;
 }

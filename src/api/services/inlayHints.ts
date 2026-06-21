@@ -44,9 +44,8 @@ function extractParamNames(paramsBlock: AST.BlockExpression): string[] {
 		}
 		if (paramStmt.kind !== NodeKind.ExpressionStatement) continue;
 		const expr = paramStmt.expression;
-		if (expr.kind === NodeKind.Identifier) {
-			names.push(expr.symbol);
-		} else if (expr.kind === NodeKind.UnaryExpression && expr.argument.kind === NodeKind.Identifier) {
+		if (expr.kind === NodeKind.Identifier) names.push(expr.symbol);
+		else if (expr.kind === NodeKind.UnaryExpression && expr.argument.kind === NodeKind.Identifier) {
 			names.push(expr.argument.symbol);
 		}
 		// 其他类型的表达式作为参数时没有名字
@@ -54,6 +53,7 @@ function extractParamNames(paramsBlock: AST.BlockExpression): string[] {
 	return names;
 }
 
+const moveMarks = ['_' /*MOVED*/, '' /*NORMAL*/, '!' /*DECAYED*/];
 /**
  * 主函数：获取源代码的内联提示
  */
@@ -63,7 +63,6 @@ export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 	const ast = serviceState.parseResult.program;
 	const parentMap = buildParentMap(ast); // 构建父节点映射
 	const { symbolMap } = serviceState.analyzeResult;
-	const moveMarks = ['_' /*MOVED*/, '' /*NORMAL*/, '!' /*DECAYED*/];
 
 	// 生成变量类型和引用源提示
 	symbolMap.forEach((symbolInfo, node) => {
@@ -122,9 +121,5 @@ export function getInlayHints(serviceState: ServiceState): InlayHint[] {
 	walk(ast);
 
 	// 按位置排序，确保编辑器能正确显示
-	return hints.sort((a, b) => {
-		return a.position.line !== b.position.line
-			? a.position.line - b.position.line
-			: a.position.character - b.position.character;
-	});
+	return hints.sort(({ position: a }, { position: b }) => a.line - b.line || a.character - b.character);
 }

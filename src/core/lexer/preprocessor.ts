@@ -1,6 +1,6 @@
 // src/core/lexer/preprocessor.ts
 
-const fullWidthMap: Record<string, string> = {
+const nonAsciiMap: Record<string, string> = {
 	// 数字
 	'０': '0',
 	'１': '1',
@@ -123,79 +123,42 @@ const fullWidthMap: Record<string, string> = {
 	'”': '"',
 };
 
-const enum State {
-	DEFAULT,
-	IN_SINGLE_QUOTE,
-	IN_DOUBLE_QUOTE,
-	IN_COMMENT,
-}
-
 export function preprocess(sourceCode: string): string {
 	let result = '';
-	let state: State = State.DEFAULT;
-	let commentNesting = 0;
+	const sourceCodeLen = sourceCode.length;
 
-	for (let i = 0; i < sourceCode.length; i++) {
-		const char = sourceCode[i]!;
-		const convertedChar = fullWidthMap[char] ?? char;
+	let prevStart = 0;
+	for (let cursor = 0, prevEnd = 0, closeChar = ''; cursor < sourceCodeLen; prevEnd = ++cursor) {
+		const openChar = nonAsciiMap[(closeChar = sourceCode[cursor]!)] ?? closeChar;
 
-		switch (state) {
-			case State.DEFAULT: {
-				// 根据转换后的字符来判断状态切换
-				if (convertedChar === "'") {
-					state = State.IN_SINGLE_QUOTE;
-				} else if (convertedChar === '"') {
-					state = State.IN_DOUBLE_QUOTE;
-				} else if (convertedChar === '(') {
-					state = State.IN_COMMENT;
-					commentNesting = 1;
+		convert: switch (openChar) {
+			case "'":
+			case '"':
+			case '{':
+				for (const closing = openChar === '{' ? '}' : openChar; ++cursor < sourceCodeLen; ) {
+					if ((closeChar = nonAsciiMap[(closeChar = sourceCode[cursor]!)] ?? closeChar) === closing) break convert;
 				}
-
-				// 在 DEFAULT 状态下，总是添加转换后的字符
-				result += convertedChar;
+				closeChar = '';
 				break;
-			}
-
-			case State.IN_SINGLE_QUOTE: {
-				if (convertedChar === "'") {
-					state = State.DEFAULT;
-					result += convertedChar; // 统一输出半宽
-				} else {
-					result += char; // 内部字符原样输出
+			case '(':
+				for (let nestingLevel = 1; ++cursor < sourceCodeLen; ) {
+					closeChar = nonAsciiMap[(closeChar = sourceCode[cursor]!)] ?? closeChar;
+					if (closeChar === '(') nestingLevel++;
+					else if (closeChar === ')' && --nestingLevel === 0) break convert;
 				}
+				closeChar = '';
 				break;
-			}
-
-			case State.IN_DOUBLE_QUOTE: {
-				if (convertedChar === '"') {
-					state = State.DEFAULT;
-					result += convertedChar; // 统一输出半宽
-				} else {
-					result += char; // 内部字符原样输出
-				}
-				break;
-			}
-
-			case State.IN_COMMENT: {
-				if (convertedChar === '(') {
-					commentNesting++;
-				} else if (convertedChar === ')') {
-					commentNesting--;
-				}
-
-				if (commentNesting === 0) {
-					state = State.DEFAULT;
-					result += convertedChar; // 统一输出半宽
-				} else {
-					result += char; // 内部字符原样输出
-				}
-				break;
-			}
-
 			default:
-				const _s: never = state;
-				console.error('只是告诉你发生了奇怪的事情:', _s);
+				if (openChar === closeChar) continue;
+				result += `${sourceCode.slice(prevStart, cursor)}${openChar}`;
+				prevStart = cursor + 1;
+				continue;
 		}
+
+		result += `${sourceCode.slice(prevStart, prevEnd)}${openChar}${sourceCode.slice(prevEnd + 1, cursor)}${closeChar}`;
+		prevStart = cursor + 1;
 	}
+	if (prevStart < sourceCodeLen) result += sourceCode.slice(prevStart);
+
 	return result;
 }

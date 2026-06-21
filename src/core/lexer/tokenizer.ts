@@ -64,8 +64,8 @@ export const enum TokenKind {
 	EOF,
 }
 
-export type AdditiveTokenKind = TokenKind.ARITHMETIC_PLUS | TokenKind.ARITHMETIC_MINUS;
-export type MultiplicativeTokenKind = TokenKind.ARITHMETIC_MULTIPLY | TokenKind.ARITHMETIC_DIVIDE;
+type AdditiveTokenKind = TokenKind.ARITHMETIC_PLUS | TokenKind.ARITHMETIC_MINUS;
+type MultiplicativeTokenKind = TokenKind.ARITHMETIC_MULTIPLY | TokenKind.ARITHMETIC_DIVIDE;
 export type ArithmeticTokenKind = AdditiveTokenKind | MultiplicativeTokenKind;
 export type EqualityTokenKind = TokenKind.COMPARISON_EQUAL | TokenKind.COMPARISON_NOT_EQUAL;
 type OrderingTokenKind =

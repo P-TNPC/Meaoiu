@@ -186,7 +186,7 @@ export async function evaluate(
 				const rightType = getMeaoiuType(rightVal);
 
 				const error = checkArithmeticOperation(op, leftType, rightType);
-				if (error) throw runtimeErrorFrom(node, `${error}`);
+				if (error) throw runtimeErrorFrom(op, `${error}`);
 
 				switch (op.kind) {
 					case TokenKind.ARITHMETIC_PLUS:
